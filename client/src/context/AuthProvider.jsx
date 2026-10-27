@@ -11,6 +11,8 @@ export default function AuthProvider({ children }) {
   const [initializing, setInitializing] = useState(() => Boolean(localStorage.getItem(TOKEN_KEY)))
   // one-off message shown on the login page (logged out, session expired, ...)
   const [notice, setNotice] = useState('')
+  // one-off welcome message shown on the customer page after login / register
+  const [welcome, setWelcome] = useState('')
 
   const clearSession = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
@@ -18,11 +20,12 @@ export default function AuthProvider({ children }) {
     setUser(null)
   }, [])
 
-  const saveSession = useCallback(({ token: newToken, user: newUser }) => {
+  const saveSession = useCallback(({ token: newToken, user: newUser }, welcomeMessage) => {
     localStorage.setItem(TOKEN_KEY, newToken)
     setToken(newToken)
     setUser(newUser)
     setNotice('')
+    setWelcome(welcomeMessage)
   }, [])
 
   // Restore the session on page load by fetching the user's data with the saved token
@@ -37,8 +40,12 @@ export default function AuthProvider({ children }) {
       })
       .catch((error) => {
         if (cancelled) return
-        clearSession()
-        if (error.response?.status !== 401) setNotice(getErrorMessage(error))
+        if (error.response?.status === 401) {
+          clearSession() // token expired or invalid
+        } else {
+          // API unreachable (e.g. restarting): keep the token so a reload can restore the session
+          setNotice(`${getErrorMessage(error)} Please try again in a moment.`)
+        }
       })
       .finally(() => {
         if (!cancelled) setInitializing(false)
@@ -59,10 +66,26 @@ export default function AuthProvider({ children }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired)
   }, [clearSession])
 
+  // Keep tabs in sync: logging out / in (maybe as another user) in one tab updates the others
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key !== TOKEN_KEY && event.key !== null) return
+      if (localStorage.getItem(TOKEN_KEY)) {
+        window.location.reload() // load the new session from the API
+      } else {
+        setToken(null)
+        setUser(null)
+        setNotice('You were logged out in another tab.')
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
   const login = useCallback(
     async (credentials) => {
       const data = await authService.loginUser(credentials)
-      saveSession(data)
+      saveSession(data, `Welcome back, ${data.user.name}!`)
       return data.user
     },
     [saveSession],
@@ -71,7 +94,7 @@ export default function AuthProvider({ children }) {
   const register = useCallback(
     async (details) => {
       const data = await authService.registerUser(details)
-      saveSession(data)
+      saveSession(data, `Welcome, ${data.user.name}! Your account has been created.`)
       return data.user
     },
     [saveSession],
@@ -90,11 +113,13 @@ export default function AuthProvider({ children }) {
       initializing,
       notice,
       setNotice,
+      welcome,
+      setWelcome,
       login,
       register,
       logout,
     }),
-    [user, token, initializing, notice, login, register, logout],
+    [user, token, initializing, notice, welcome, login, register, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import Alert from '../components/Alert'
 import AuthLayout from '../components/AuthLayout'
 import Button from '../components/Button'
@@ -11,18 +11,12 @@ import { validateLogin } from '../utils/validation'
 export default function Login() {
   useDocumentTitle('Log in')
   const { login, notice, setNotice } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-  // Send the user back to the page they originally wanted (set by ProtectedRoute)
-  const redirectTo = location.state?.from?.pathname || '/customers'
 
   const { values, errors, formError, submitting, handleChange, handleBlur, handleSubmit } = useForm({
     initialValues: { email: '', password: '' },
     validate: validateLogin,
-    onSubmit: async (credentials) => {
-      const user = await login(credentials)
-      navigate(redirectTo, { replace: true, state: { flash: `Welcome back, ${user.name}!` } })
-    },
+    // On success GuestRoute sends the user on to the page they wanted
+    onSubmit: login,
   })
 
   return (

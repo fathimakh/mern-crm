@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import Alert from '../components/Alert'
 import AuthLayout from '../components/AuthLayout'
 import Button from '../components/Button'
@@ -9,7 +9,7 @@ import useForm from '../hooks/useForm'
 import { passwordStrength, validateRegister } from '../utils/validation'
 
 const STRENGTH = [
-  { label: 'Too short', color: 'bg-slate-200' },
+  { label: 'Too weak', color: 'bg-slate-200' },
   { label: 'Weak', color: 'bg-red-500' },
   { label: 'Fair', color: 'bg-amber-500' },
   { label: 'Good', color: 'bg-lime-500' },
@@ -36,18 +36,12 @@ function PasswordStrength({ password }) {
 export default function Register() {
   useDocumentTitle('Create account')
   const { register } = useAuth()
-  const navigate = useNavigate()
 
   const { values, errors, formError, submitting, handleChange, handleBlur, handleSubmit } = useForm({
     initialValues: { name: '', email: '', password: '', confirmPassword: '' },
     validate: validateRegister,
-    onSubmit: async ({ name, email, password }) => {
-      const user = await register({ name, email, password })
-      navigate('/customers', {
-        replace: true,
-        state: { flash: `Welcome, ${user.name}! Your account has been created.` },
-      })
-    },
+    // On success GuestRoute sends the new user to the customer page
+    onSubmit: ({ name, email, password }) => register({ name, email, password }),
   })
 
   const field = (name) => ({

@@ -7,7 +7,8 @@ import { CUSTOMER_STATUSES } from './constants'
  */
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-const NAME_REGEX = /^[\p{L}\s.'-]+$/u
+// Starts with a letter; then letters / combining marks (any language), spaces, . ' -
+const NAME_REGEX = /^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u
 const PHONE_REGEX = /^\+?[\d\s().-]+$/
 
 const isBlank = (value) => !value || !String(value).trim()
@@ -44,6 +45,8 @@ export const validateRegister = (values) => {
   else if (values.password.length > 64) password = 'Password cannot exceed 64 characters'
   else if (!/[A-Za-z]/.test(values.password) || !/\d/.test(values.password))
     password = 'Password must contain at least one letter and one number'
+  // bcrypt (used by the API) only uses the first 72 bytes
+  else if (new TextEncoder().encode(values.password).length > 72) password = 'Password is too long'
 
   let confirmPassword
   if (!values.confirmPassword) confirmPassword = 'Please confirm your password'
@@ -78,12 +81,13 @@ export const validateCustomer = (values) => {
   })
 }
 
-// Password strength meter used on the register page (0-4)
+// Password strength meter used on the register page (0-4).
+// 0 until the password meets the rules above, then extra points for length, mixed case and symbols.
 export const passwordStrength = (password = '') => {
-  let score = 0
-  if (password.length >= 6) score += 1
+  if (password.length < 6 || password.length > 64 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) return 0
+  let score = 1
   if (password.length >= 10) score += 1
-  if (/[A-Za-z]/.test(password) && /\d/.test(password)) score += 1
-  if (/[^A-Za-z0-9]/.test(password) || (/[a-z]/.test(password) && /[A-Z]/.test(password))) score += 1
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score += 1
+  if (/[^A-Za-z0-9]/.test(password)) score += 1
   return score
 }

@@ -10,10 +10,13 @@ const api = axios.create({
   timeout: 10000,
 })
 
-// Attach the JWT to every request
+// Public endpoints never get the token (a failed login must not end another tab's session)
+const PUBLIC_ENDPOINTS = ['/users/login', '/users/register']
+
+// Attach the JWT to every other request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_KEY)
-  if (token) {
+  if (token && !PUBLIC_ENDPOINTS.includes(config.url)) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config

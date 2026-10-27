@@ -21,7 +21,7 @@ import { getErrorMessage } from '../utils/errors'
  */
 export default function Userdata() {
   useDocumentTitle('Customers')
-  const { user } = useAuth()
+  const { user, welcome, setWelcome } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -32,8 +32,8 @@ export default function Userdata() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
 
-  // Success message passed from login/register/add/edit via navigation state
-  const [flash, setFlash] = useState(() => location.state?.flash || '')
+  // Success message: the welcome after login/register, or one passed by add/edit via navigation state
+  const [flash, setFlash] = useState(() => location.state?.flash || welcome || '')
 
   const [customerToDelete, setCustomerToDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -67,6 +67,11 @@ export default function Userdata() {
       navigate(location.pathname, { replace: true, state: null })
     }
   }, [location.pathname, location.state, navigate])
+
+  // The welcome message is shown once
+  useEffect(() => {
+    if (welcome) setWelcome('')
+  }, [welcome, setWelcome])
 
   // Hide the success message after a few seconds
   useEffect(() => {
@@ -108,13 +113,22 @@ export default function Userdata() {
   const confirmDelete = async () => {
     setDeleting(true)
     setDeleteError('')
+    const removeFromList = () =>
+      setCustomers((current) => current.filter((customer) => customer._id !== customerToDelete._id))
     try {
       await deleteCustomer(customerToDelete._id)
-      setCustomers((current) => current.filter((customer) => customer._id !== customerToDelete._id))
+      removeFromList()
       setFlash(`${customerToDelete.name} was deleted.`)
       setCustomerToDelete(null)
     } catch (error) {
-      setDeleteError(getErrorMessage(error))
+      if (error.response?.status === 404) {
+        // Already deleted (e.g. in another tab): just drop it from the list
+        removeFromList()
+        setFlash(`${customerToDelete.name} had already been deleted.`)
+        setCustomerToDelete(null)
+      } else {
+        setDeleteError(getErrorMessage(error))
+      }
     } finally {
       setDeleting(false)
     }
