@@ -7,13 +7,14 @@ const ApiError = require('../utils/ApiError');
  * JWT and attaches the logged-in user to req.user.
  */
 const protect = async (req, res, next) => {
-  const authHeader = req.headers.authorization || '';
+  // The auth scheme is case-insensitive ("Bearer" / "bearer")
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.authorization || '');
 
-  if (!authHeader.startsWith('Bearer ')) {
+  if (!match) {
     throw new ApiError(401, 'Not authorized, no token provided');
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = match[1];
 
   let decoded;
   try {

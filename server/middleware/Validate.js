@@ -20,12 +20,17 @@ const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
 const isMissing = (value) =>
   value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 
-// Trim every string in the body and lowercase the email
+// Passwords are kept exactly as typed (spaces are valid password characters)
+const UNTRIMMED_FIELDS = ['password'];
+
+// Trim every string in the body, turn null into an empty value and lowercase the email
 const normalizeBody = (body) => {
   const source = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
   const normalized = {};
   for (const [key, value] of Object.entries(source)) {
-    normalized[key] = typeof value === 'string' ? value.trim() : value;
+    if (value === null) normalized[key] = '';
+    else if (typeof value === 'string' && !UNTRIMMED_FIELDS.includes(key)) normalized[key] = value.trim();
+    else normalized[key] = value;
   }
   if (typeof normalized.email === 'string') normalized.email = normalized.email.toLowerCase();
   return normalized;
@@ -130,10 +135,11 @@ const customerRules = (body, { partial = false } = {}) => {
       checkMessage: 'Please provide a valid phone number (7-15 digits)',
     }),
     company: checkText(body.company, 'Company', { max: 100 }),
-    status: checkText(body.status, 'Status', {
-      check: (value) => CUSTOMER_STATUSES.includes(value),
-      checkMessage: `Status must be one of: ${CUSTOMER_STATUSES.join(', ')}`,
-    }),
+    // Optional (defaults to "Lead"), but when sent it must be one of the allowed values
+    status:
+      body.status !== undefined && !CUSTOMER_STATUSES.includes(body.status)
+        ? `Status must be one of: ${CUSTOMER_STATUSES.join(', ')}`
+        : undefined,
     notes: checkText(body.notes, 'Notes', { max: 500 }),
   });
 

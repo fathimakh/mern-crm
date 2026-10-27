@@ -48,7 +48,14 @@ const startServer = async () => {
       throw new Error('JWT_SECRET is not defined. Add it to the .env file.');
     }
     await connectDB();
-    app.listen(PORT, () => console.log(`CRM API running on http://localhost:${PORT}`));
+    // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback
+    app.listen(PORT, (error) => {
+      if (error) {
+        console.error(`Failed to start server: ${error.message}`);
+        process.exit(1);
+      }
+      console.log(`CRM API running on http://localhost:${PORT}`);
+    });
   } catch (error) {
     console.error(`Failed to start server: ${error.message}`);
     process.exit(1);
