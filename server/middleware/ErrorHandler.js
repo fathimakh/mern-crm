@@ -13,7 +13,9 @@ const notFound = (req, res, next) => {
  */
 // eslint-disable-next-line no-unused-vars
 const errorHandler = (err, req, res, next) => {
-  let statusCode = err.statusCode || 500;
+  // Express / body-parser errors use `status`, ApiError uses `statusCode`
+  let statusCode = err.statusCode || err.status || 500;
+  if (statusCode < 400 || statusCode > 599) statusCode = 500;
   let message = err.message || 'Internal server error';
   let errors = err instanceof ApiError ? err.errors : undefined;
 
@@ -45,19 +47,20 @@ const errorHandler = (err, req, res, next) => {
     message = 'Not authorized, invalid or expired token';
   }
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  // Stack traces are only sent back when NODE_ENV=development
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
   if (statusCode >= 500) {
-    console.error(err);
-    // Do not leak internal details to clients in production
-    if (isProduction) message = 'Internal server error';
+    console.error(err); // full details stay in the server log
+    // Do not leak internal details to clients
+    if (!isDevelopment) message = 'Internal server error';
   }
 
   res.status(statusCode).json({
     success: false,
     message,
     ...(errors && { errors }),
-    ...(!isProduction && statusCode >= 500 && { stack: err.stack }),
+    ...(isDevelopment && statusCode >= 500 && { stack: err.stack }),
   });
 };
 

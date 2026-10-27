@@ -14,7 +14,8 @@ const {
  *   400 { success: false, message: 'Validation failed', errors: { field: 'message' } }
  */
 
-const NAME_REGEX = /^[\p{L}\s.'-]+$/u; // letters (any language), spaces, . ' -
+// Starts with a letter; then letters / combining marks (any language), spaces, . ' -
+const NAME_REGEX = /^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u;
 const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
 
 const isMissing = (value) =>
@@ -54,8 +55,16 @@ const checkText = (value, label, options = {}) => {
 const collectErrors = (checks) =>
   Object.fromEntries(Object.entries(checks).filter(([, message]) => Boolean(message)));
 
+// bcrypt only uses the first 72 bytes of a password
+const MAX_PASSWORD_BYTES = 72;
+
 // Turns a rules function into Express middleware
 const validateBody = (rules) => (req, res, next) => {
+  // A body was sent but no parser understood it (e.g. text/plain)
+  if (req.body === undefined && req.is('*/*')) {
+    return next(new ApiError(415, 'Unsupported content type: send JSON with Content-Type: application/json'));
+  }
+
   const body = normalizeBody(req.body);
   const errors = rules(body);
 
@@ -84,23 +93,26 @@ const registerRules = (body) =>
       check: isValidEmail,
       checkMessage: 'Please provide a valid email address',
     }),
-    password: checkText(body.password, 'Password', {
-      required: true,
-      min: 6,
-      max: 64,
-      check: isStrongPassword,
-      checkMessage: 'Password must contain at least one letter and one number',
-    }),
+    password:
+      checkText(body.password, 'Password', {
+        required: true,
+        min: 6,
+        max: 64,
+        check: isStrongPassword,
+        checkMessage: 'Password must contain at least one letter and one number',
+      }) ||
+      (Buffer.byteLength(body.password, 'utf8') > MAX_PASSWORD_BYTES ? 'Password is too long' : undefined),
   });
 
 const loginRules = (body) =>
   collectErrors({
     email: checkText(body.email, 'Email', {
       required: true,
+      max: 254,
       check: isValidEmail,
       checkMessage: 'Please provide a valid email address',
     }),
-    password: checkText(body.password, 'Password', { required: true }),
+    password: checkText(body.password, 'Password', { required: true, max: 64 }),
   });
 
 // ---------- Customers ----------

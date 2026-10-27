@@ -22,6 +22,7 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5174')
 if (process.env.NODE_ENV !== 'test') app.use(requestLogger);
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 
 // ---------- Routes ----------
 app.get('/api/health', (req, res) => {
