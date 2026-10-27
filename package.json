@@ -9,7 +9,7 @@
     "client": "npm start --prefix client",
     "dev": "concurrently -n server,client -c blue,magenta \"npm run server\" \"npm run client\"",
     "build": "npm run build --prefix client",
-    "test:api": "newman run postman/MERN-CRM.postman_collection.json -e postman/MERN-CRM.postman_environment.json"
+    "test:api": "npx -y newman@6 run postman/MERN-CRM.postman_collection.json -e postman/MERN-CRM.postman_environment.json"
   },
   "keywords": [
     "mern",
@@ -22,7 +22,9 @@
   ],
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^10.0.6",
-    "newman": "^6.2.3"
+    "concurrently": "^10.0.6"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
