@@ -1,6 +1,5 @@
 const Customer = require('../models/CustomerModel');
 const ApiError = require('../utils/ApiError');
-const { CUSTOMER_STATUSES } = require('../utils/validators');
 
 // Only these fields can be set by the client (prevents overwriting `user`, `_id`, ...)
 const EDITABLE_FIELDS = ['name', 'email', 'phone', 'company', 'status', 'notes'];
@@ -23,14 +22,10 @@ const getCustomers = async (req, res) => {
   const filter = { user: req.user._id };
   const { search, status } = req.query;
 
-  if (typeof status === 'string' && status) {
-    if (!CUSTOMER_STATUSES.includes(status)) {
-      throw new ApiError(400, `Status must be one of: ${CUSTOMER_STATUSES.join(', ')}`);
-    }
-    filter.status = status;
-  }
+  // search/status were already checked by validateCustomerQuery
+  if (status) filter.status = status;
 
-  if (typeof search === 'string' && search.trim()) {
+  if (search && search.trim()) {
     const pattern = new RegExp(escapeRegex(search.trim()), 'i');
     filter.$or = [{ name: pattern }, { email: pattern }, { company: pattern }, { phone: pattern }];
   }
