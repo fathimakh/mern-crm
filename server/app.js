@@ -8,6 +8,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const userRoutes = require('./routes/UserRoutes');
+const customerRoutes = require('./routes/CustomerRoutes');
 const requestLogger = require('./middleware/Logger');
 const { notFound, errorHandler } = require('./middleware/ErrorHandler');
 
@@ -32,6 +33,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/users', userRoutes);
+app.use('/api/customers', customerRoutes);
 
 // ---------- Error handling (must be registered last) ----------
 app.use(notFound);
