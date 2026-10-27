@@ -7,6 +7,9 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const connectDB = require('./config/db');
+const userRoutes = require('./routes/UserRoutes');
+const requestLogger = require('./middleware/Logger');
+const { notFound, errorHandler } = require('./middleware/ErrorHandler');
 
 const app = express();
 
@@ -15,6 +18,7 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5174')
   .split(',')
   .map((origin) => origin.trim());
 
+if (process.env.NODE_ENV !== 'test') app.use(requestLogger);
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '10kb' }));
 
@@ -26,6 +30,12 @@ app.get('/api/health', (req, res) => {
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
   });
 });
+
+app.use('/api/users', userRoutes);
+
+// ---------- Error handling (must be registered last) ----------
+app.use(notFound);
+app.use(errorHandler);
 
 // ---------- Start ----------
 const PORT = process.env.PORT || 5014;
