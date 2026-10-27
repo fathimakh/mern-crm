@@ -5,9 +5,9 @@ MERN CRM API
 ❏ 0. Health
 ↳ Health check
   ┌
-  │ 'Starting run 1793115332949'
+  │ 'Starting run 1793118391639'
   └
-  GET http://localhost:5014/api/health [200 OK, 319B, 9ms]
+  GET http://localhost:5014/api/health [200 OK, 319B, 10ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -16,7 +16,7 @@ MERN CRM API
 
 ❏ 1. Auth
 ↳ Register user A -> 201
-  POST http://localhost:5014/api/users/register [201 Created, 680B, 58ms]
+  POST http://localhost:5014/api/users/register [201 Created, 680B, 63ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 201 Created
@@ -45,7 +45,7 @@ MERN CRM API
   ✓  errors lists exactly: email, password
 
 ↳ Register - name & password too short -> 400
-  POST http://localhost:5014/api/users/register [400 Bad Request, 413B, 2ms]
+  POST http://localhost:5014/api/users/register [400 Bad Request, 413B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -64,7 +64,7 @@ MERN CRM API
   ✓  no token is issued
 
 ↳ Login user A -> 200
-  POST http://localhost:5014/api/users/login [200 OK, 668B, 62ms]
+  POST http://localhost:5014/api/users/login [200 OK, 668B, 56ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -74,7 +74,7 @@ MERN CRM API
   ✓  password hash and __v are never returned
 
 ↳ Login - wrong password -> 401
-  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 54ms]
+  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 55ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -84,7 +84,7 @@ MERN CRM API
   ✓  no token or user is returned
 
 ↳ Login - password with extra spaces -> 401 (passwords are not trimmed)
-  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 54ms]
+  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 56ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -94,7 +94,7 @@ MERN CRM API
   ✓  no token is issued
 
 ↳ Login - unknown email -> 401
-  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 2ms]
+  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -104,7 +104,7 @@ MERN CRM API
   ✓  no token is issued
 
 ↳ Login - empty body -> 400
-  POST http://localhost:5014/api/users/login [400 Bad Request, 379B, 1ms]
+  POST http://localhost:5014/api/users/login [400 Bad Request, 379B, 0µs]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -121,6 +121,23 @@ MERN CRM API
   ✓  success is false with message "Validation failed"
   ✓  errors lists exactly: email
 
+↳ Login - email longer than 254 characters -> 400
+  POST http://localhost:5014/api/users/login [400 Bad Request, 362B, 0µs]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: email
+
+↳ Login - form-urlencoded body -> 200
+  POST http://localhost:5014/api/users/login [200 OK, 668B, 54ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Login successful"
+  ✓  returns a token for user A
+
 ↳ Get profile -> 200
   GET http://localhost:5014/api/users/profile [200 OK, 456B, 2ms]
   ✓  [common] response is JSON
@@ -131,7 +148,7 @@ MERN CRM API
   ✓  password hash and __v are never returned
 
 ↳ Get profile - lowercase "bearer" scheme -> 200
-  GET http://localhost:5014/api/users/profile [200 OK, 456B, 2ms]
+  GET http://localhost:5014/api/users/profile [200 OK, 456B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -139,7 +156,7 @@ MERN CRM API
   ✓  returns user A
 
 ↳ Get profile - no token -> 401
-  GET http://localhost:5014/api/users/profile [401 Unauthorized, 322B, 1ms]
+  GET http://localhost:5014/api/users/profile [401 Unauthorized, 322B, 0µs]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -170,7 +187,7 @@ MERN CRM API
   ✓  timestamps are set and __v is hidden
 
 ↳ Create customer (required fields only, status defaults to Lead) -> 201
-  POST http://localhost:5014/api/customers [201 Created, 599B, 4ms]
+  POST http://localhost:5014/api/customers [201 Created, 599B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 201 Created
@@ -179,7 +196,7 @@ MERN CRM API
   ✓  required fields are stored and owner is user A
 
 ↳ List customers -> 200 (newest first)
-  GET http://localhost:5014/api/customers [200 OK, 890B, 5ms]
+  GET http://localhost:5014/api/customers [200 OK, 890B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -190,7 +207,7 @@ MERN CRM API
   ✓  sorted newest first (createdAt descending)
 
 ↳ List customers ?search=ALICE -> 200 (case-insensitive name match)
-  GET http://localhost:5014/api/customers?search=ALICE [200 OK, 614B, 4ms]
+  GET http://localhost:5014/api/customers?search=ALICE [200 OK, 614B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -199,7 +216,7 @@ MERN CRM API
   ✓  only Alice matches
 
 ↳ List customers ?search=7946 -> 200 (phone match)
-  GET http://localhost:5014/api/customers?search=7946 [200 OK, 567B, 3ms]
+  GET http://localhost:5014/api/customers?search=7946 [200 OK, 567B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -208,7 +225,7 @@ MERN CRM API
   ✓  only Bob matches
 
 ↳ List customers ?search=.* -> 200 (regex characters are literal)
-  GET http://localhost:5014/api/customers?search=.* [200 OK, 290B, 4ms]
+  GET http://localhost:5014/api/customers?search=.* [200 OK, 290B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -217,7 +234,7 @@ MERN CRM API
   ✓  no customers match the literal text ".*"
 
 ↳ List customers ?status=Prospect -> 200
-  GET http://localhost:5014/api/customers?status=Prospect [200 OK, 614B, 5ms]
+  GET http://localhost:5014/api/customers?status=Prospect [200 OK, 614B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -226,7 +243,7 @@ MERN CRM API
   ✓  only Prospect customers are returned (Alice)
 
 ↳ List customers ?status=Lead -> 200
-  GET http://localhost:5014/api/customers?status=Lead [200 OK, 567B, 3ms]
+  GET http://localhost:5014/api/customers?status=Lead [200 OK, 567B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -235,7 +252,7 @@ MERN CRM API
   ✓  only Lead customers are returned (Bob)
 
 ↳ List customers ?search=alice&status=Lead -> 200 (filters combine)
-  GET http://localhost:5014/api/customers?search=alice&status=Lead [200 OK, 290B, 4ms]
+  GET http://localhost:5014/api/customers?search=alice&status=Lead [200 OK, 290B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -244,7 +261,7 @@ MERN CRM API
   ✓  no customer matches both filters
 
 ↳ Get customer by id -> 200
-  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 601B, 3ms]
+  GET http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee4 [200 OK, 601B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -252,7 +269,7 @@ MERN CRM API
   ✓  returns Alice with all fields
 
 ↳ Update customer (PUT) -> 200
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 651B, 5ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee4 [200 OK, 651B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -262,7 +279,7 @@ MERN CRM API
   ✓  updatedAt moved forward, createdAt unchanged
 
 ↳ Get customer after update -> 200 (changes persisted)
-  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 609B, 3ms]
+  GET http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee4 [200 OK, 609B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -270,7 +287,7 @@ MERN CRM API
   ✓  updated values are persisted
 
 ↳ Delete customer -> 200
-  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 354B, 3ms]
+  DELETE http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee4 [200 OK, 354B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -278,7 +295,7 @@ MERN CRM API
   ✓  returns the id of the deleted customer
 
 ↳ Get deleted customer -> 404
-  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [404 Not Found, 304B, 7ms]
+  GET http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee4 [404 Not Found, 304B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -288,7 +305,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Delete deleted customer again -> 404
-  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [404 Not Found, 304B, 2ms]
+  DELETE http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee4 [404 Not Found, 304B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -298,7 +315,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ List customers after delete -> 200
-  GET http://localhost:5014/api/customers [200 OK, 567B, 2ms]
+  GET http://localhost:5014/api/customers [200 OK, 567B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -308,7 +325,7 @@ MERN CRM API
 
 ❏ 3. Customers - Validation & Errors
 ↳ Create customer - empty body -> 400
-  POST http://localhost:5014/api/customers [400 Bad Request, 399B, 3ms]
+  POST http://localhost:5014/api/customers [400 Bad Request, 399B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -317,7 +334,7 @@ MERN CRM API
   ✓  errors lists exactly: name, email, phone
 
 ↳ Create customer - invalid name/email/phone/status -> 400
-  POST http://localhost:5014/api/customers [400 Bad Request, 570B, 4ms]
+  POST http://localhost:5014/api/customers [400 Bad Request, 570B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -326,7 +343,7 @@ MERN CRM API
   ✓  errors lists exactly: name, email, phone, status
 
 ↳ Create customer - wrong type & length limits -> 400
-  POST http://localhost:5014/api/customers [400 Bad Request, 506B, 3ms]
+  POST http://localhost:5014/api/customers [400 Bad Request, 506B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -363,7 +380,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Update customer - empty body -> 400
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 409B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [400 Bad Request, 409B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -372,7 +389,7 @@ MERN CRM API
   ✓  errors lists exactly: fields
 
 ↳ Update customer - only non-editable fields -> 400
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 409B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [400 Bad Request, 409B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -381,7 +398,7 @@ MERN CRM API
   ✓  errors lists exactly: fields
 
 ↳ Update customer - blank required fields -> 400
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 411B, 2ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [400 Bad Request, 411B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -390,7 +407,7 @@ MERN CRM API
   ✓  errors lists exactly: name, email, phone
 
 ↳ Update customer - invalid values -> 400
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 468B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [400 Bad Request, 468B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -399,7 +416,7 @@ MERN CRM API
   ✓  errors lists exactly: email, status, notes
 
 ↳ Update customer - null status -> 400
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 384B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [400 Bad Request, 384B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -409,15 +426,23 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Update customer - set company & notes -> 200
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a4 [200 OK, 633B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee6 [200 OK, 633B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
   ✓  success is true with message "Customer updated successfully"
   ✓  company and notes are saved
 
+↳ Update customer - name with combining marks (Hindi) -> 200
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee6 [200 OK, 653B, 6ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer updated successfully"
+  ✓  the name is saved exactly
+
 ↳ Update customer - null company & notes clear them -> 200
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a4 [200 OK, 605B, 4ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee6 [200 OK, 625B, 8ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -426,7 +451,7 @@ MERN CRM API
   ✓  other fields are unchanged
 
 ↳ Update customer - email used by another customer -> 409
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [409 Conflict, 390B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [409 Conflict, 390B, 8ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -436,15 +461,25 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Update customer - keeping its own email -> 200
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [200 OK, 608B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [200 OK, 608B, 14ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
   ✓  success is true with message "Customer updated successfully"
   ✓  own email is accepted and company is updated
 
+↳ Get customer - undecodable id (%E0%A4) -> 400
+  GET http://localhost:5014/api/customers/%E0%A4 [400 Bad Request, 319B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Failed to decode param '%E0%A4'"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
 ↳ Get customer - malformed id -> 400
-  GET http://localhost:5014/api/customers/12345 [400 Bad Request, 345B, 2ms]
+  GET http://localhost:5014/api/customers/12345 [400 Bad Request, 345B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -454,7 +489,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Update customer - malformed id -> 400
-  PUT http://localhost:5014/api/customers/not-a-valid-id [400 Bad Request, 345B, 2ms]
+  PUT http://localhost:5014/api/customers/not-a-valid-id [400 Bad Request, 345B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -464,7 +499,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Delete customer - malformed id -> 400
-  DELETE http://localhost:5014/api/customers/zzzzzzzzzzzzzzzzzzzzzzzz [400 Bad Request, 345B, 2ms]
+  DELETE http://localhost:5014/api/customers/zzzzzzzzzzzzzzzzzzzzzzzz [400 Bad Request, 345B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -474,7 +509,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Get customer - valid but nonexistent id -> 404
-  GET http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 3ms]
+  GET http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 11ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -484,7 +519,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Update customer - valid but nonexistent id -> 404
-  PUT http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 3ms]
+  PUT http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 28ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -494,7 +529,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Delete customer - valid but nonexistent id -> 404
-  DELETE http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 3ms]
+  DELETE http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -504,7 +539,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ List customers - invalid status -> 400
-  GET http://localhost:5014/api/customers?status=VIP [400 Bad Request, 391B, 3ms]
+  GET http://localhost:5014/api/customers?status=VIP [400 Bad Request, 391B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -514,7 +549,7 @@ MERN CRM API
   ✓  no customer list is returned
 
 ↳ List customers - search too long -> 400
-  GET http://localhost:5014/api/customers?search=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa [400 Bad Request, 371B, 2ms]
+  GET http://localhost:5014/api/customers?search=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa [400 Bad Request, 371B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -525,7 +560,7 @@ MERN CRM API
 
 ❏ 4. Security & Misc
 ↳ Register user B -> 201
-  POST http://localhost:5014/api/users/register [201 Created, 679B, 56ms]
+  POST http://localhost:5014/api/users/register [201 Created, 679B, 58ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 201 Created
@@ -535,7 +570,7 @@ MERN CRM API
   ✓  password hash and __v are never returned
 
 ↳ User B cannot GET user A's customer -> 404
-  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 304B, 6ms]
+  GET http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [404 Not Found, 304B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -545,7 +580,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ User B cannot UPDATE user A's customer -> 404
-  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 304B, 3ms]
+  PUT http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [404 Not Found, 304B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -555,7 +590,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ User B cannot DELETE user A's customer -> 404
-  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 304B, 4ms]
+  DELETE http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [404 Not Found, 304B, 4ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -565,7 +600,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ User B's list excludes user A's customers -> 200
-  GET http://localhost:5014/api/customers [200 OK, 290B, 3ms]
+  GET http://localhost:5014/api/customers [200 OK, 290B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -574,7 +609,7 @@ MERN CRM API
   ✓  B sees none of A's customers
 
 ↳ User B creates customer with A's customer email + spoofed owner -> 201
-  POST http://localhost:5014/api/customers [201 Created, 599B, 5ms]
+  POST http://localhost:5014/api/customers [201 Created, 599B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 201 Created
@@ -592,7 +627,7 @@ MERN CRM API
   ✓  only B's own customer is listed
 
 ↳ User A's customer is unchanged after B's attempts -> 200
-  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [200 OK, 566B, 2ms]
+  GET http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [200 OK, 566B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -600,7 +635,7 @@ MERN CRM API
   ✓  record still exists with A's values
 
 ↳ User A's list excludes user B's customer -> 200
-  GET http://localhost:5014/api/customers [200 OK, 864B, 4ms]
+  GET http://localhost:5014/api/customers [200 OK, 884B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -619,7 +654,7 @@ MERN CRM API
   ✓  no customer list is returned
 
 ↳ Create customer without token -> 401
-  POST http://localhost:5014/api/customers [401 Unauthorized, 322B, 1ms]
+  POST http://localhost:5014/api/customers [401 Unauthorized, 322B, 0µs]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -629,7 +664,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Customers with Basic auth scheme -> 401
-  GET http://localhost:5014/api/customers [401 Unauthorized, 322B, 2ms]
+  GET http://localhost:5014/api/customers [401 Unauthorized, 322B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -649,7 +684,7 @@ MERN CRM API
   ✓  the token sent was really forged (A's signature, edited payload)
 
 ↳ Customers with unsigned (alg none) token -> 401
-  GET http://localhost:5014/api/customers [401 Unauthorized, 318B, 3ms]
+  GET http://localhost:5014/api/customers [401 Unauthorized, 318B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -660,7 +695,7 @@ MERN CRM API
   ✓  the token sent was really an unsigned alg:none JWT
 
 ↳ Unknown route -> 404
-  GET http://localhost:5014/api/does-not-exist [404 Not Found, 326B, 2ms]
+  GET http://localhost:5014/api/does-not-exist [404 Not Found, 326B, 0µs]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -669,7 +704,7 @@ MERN CRM API
   ✓  no field errors are returned
 
 ↳ Unsupported method on a customer -> 404
-  PATCH http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 348B, 2ms]
+  PATCH http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [404 Not Found, 348B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -686,8 +721,18 @@ MERN CRM API
   ✓  no field errors are returned
   ✓  no customer data is returned
 
+↳ Create customer - text/plain body -> 415
+  POST http://localhost:5014/api/customers [415 Unsupported Media Type, 371B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 415 Unsupported Media Type
+  ✓  success is false with message "Unsupported content type: send JSON with Content-Type: application/json"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
 ↳ Payload too large -> 413
-  POST http://localhost:5014/api/customers [413 Payload Too Large, 319B, 2ms]
+  POST http://localhost:5014/api/customers [413 Payload Too Large, 319B, 1ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  [common] error has a message and no stack trace
@@ -697,7 +742,7 @@ MERN CRM API
   ✓  no customer data is returned
 
 ↳ Cleanup - delete user B's customer -> 200
-  DELETE http://localhost:5014/api/customers/6ae0c4c6cd70008055ebc0a6 [200 OK, 354B, 5ms]
+  DELETE http://localhost:5014/api/customers/6ae0d0b95a2b037361f16ee8 [200 OK, 354B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -705,7 +750,7 @@ MERN CRM API
   ✓  deleted the expected customer
 
 ↳ Cleanup - delete user A's customer Bob -> 200
-  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [200 OK, 354B, 3ms]
+  DELETE http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee5 [200 OK, 354B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -713,7 +758,7 @@ MERN CRM API
   ✓  deleted the expected customer
 
 ↳ Cleanup - delete user A's customer Carol -> 200
-  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a4 [200 OK, 354B, 3ms]
+  DELETE http://localhost:5014/api/customers/6ae0d0b85a2b037361f16ee6 [200 OK, 354B, 2ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -721,7 +766,7 @@ MERN CRM API
   ✓  deleted the expected customer
 
 ↳ Cleanup - user A has no customers left -> 200
-  GET http://localhost:5014/api/customers [200 OK, 290B, 5ms]
+  GET http://localhost:5014/api/customers [200 OK, 290B, 3ms]
   ✓  [common] response is JSON
   ✓  [common] success flag matches the HTTP status
   ✓  Status code is 200 OK
@@ -743,17 +788,17 @@ MERN CRM API
 ├─────────────────────────┼──────────────────┼─────────────────┤
 │              iterations │                1 │               0 │
 ├─────────────────────────┼──────────────────┼─────────────────┤
-│                requests │               78 │               0 │
+│                requests │               83 │               0 │
 ├─────────────────────────┼──────────────────┼─────────────────┤
-│            test-scripts │              156 │               0 │
+│            test-scripts │              166 │               0 │
 ├─────────────────────────┼──────────────────┼─────────────────┤
-│      prerequest-scripts │               86 │               0 │
+│      prerequest-scripts │               92 │               0 │
 ├─────────────────────────┼──────────────────┼─────────────────┤
-│              assertions │              494 │               0 │
+│              assertions │              524 │               0 │
 ├─────────────────────────┴──────────────────┴─────────────────┤
-│ total run duration: 1596ms                                   │
+│ total run duration: 1770ms                                   │
 ├──────────────────────────────────────────────────────────────┤
-│ total data received: 14.02kB (approx)                        │
+│ total data received: 15.15kB (approx)                        │
 ├──────────────────────────────────────────────────────────────┤
-│ average response time: 6ms [min: 1ms, max: 62ms, s.d.: 13ms] │
+│ average response time: 8ms [min: 1ms, max: 63ms, s.d.: 16ms] │
 └──────────────────────────────────────────────────────────────┘

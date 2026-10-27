@@ -775,6 +775,136 @@
 					"response": []
 				},
 				{
+					"name": "Login - email longer than 254 characters -> 400",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.variables.set('longEmail', 'a'.repeat(250) + '@example.com');"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: email\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"Email cannot exceed 254 characters\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{longEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with a 262-character email (the maximum length of an email address is 254).\n\n**Expected:** 400 `Validation failed` with `errors.email`."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - form-urlencoded body -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Login successful\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Login successful\");",
+									"});",
+									"pm.test('returns a token for user A', function () {",
+									"  pm.expect(body.token).to.be.a('string');",
+									"  pm.expect(body.user.email).to.equal(pm.collectionVariables.get('emailA'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-www-form-urlencoded"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "email",
+									"value": "{{emailA}}",
+									"type": "text"
+								},
+								{
+									"key": "password",
+									"value": "{{password}}",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login sent as `x-www-form-urlencoded` (Postman's form body) instead of JSON. The API parses both.\n\n**Expected:** 200 `Login successful` with a token."
+					},
+					"response": []
+				},
+				{
 					"name": "Get profile -> 200",
 					"event": [
 						{
@@ -2497,6 +2627,60 @@
 					"response": []
 				},
 				{
+					"name": "Update customer - name with combining marks (Hindi) -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer updated successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer updated successfully\");",
+									"});",
+									"pm.test('the name is saved exactly', function () {",
+									"  pm.expect(body.customer.name).to.equal('कविता शर्मा');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"कविता शर्मा\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId3}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId3}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId3}} renaming Carol to a Hindi name. Names in scripts such as Hindi or Malayalam use combining marks, which the name rule accepts.\n\n**Expected:** 200 with the new name."
+					},
+					"response": []
+				},
+				{
 					"name": "Update customer - null company & notes clear them -> 200",
 					"event": [
 						{
@@ -2666,6 +2850,49 @@
 							]
 						},
 						"description": "PUT /api/customers/{{customerId2}} re-sending Bob's own email plus a new company. The duplicate check must exclude the customer itself.\n\n**Expected:** 200, email unchanged, company updated."
+					},
+					"response": []
+				},
+				{
+					"name": "Get customer - undecodable id (%E0%A4) -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Failed to decode param '%E0%A4'\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Failed to decode param '%E0%A4'\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/%E0%A4",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"%E0%A4"
+							]
+						},
+						"description": "GET /api/customers/%E0%A4 - a percent-encoded id that is not valid UTF-8, so it cannot be decoded.\n\n**Expected:** 400 (not 500) `Failed to decode param` and no stack trace."
 					},
 					"response": []
 				},
@@ -4039,6 +4266,62 @@
 							]
 						},
 						"description": "POST /api/customers with a truncated JSON body (Content-Type: application/json).\n\n**Expected:** 400 `Malformed JSON in request body`."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer - text/plain body -> 415",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 415 Unsupported Media Type\", function () {",
+									"    pm.response.to.have.status(415);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Unsupported content type: send JSON with Content-Type: application/json\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Unsupported content type: send JSON with Content-Type: application/json\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/plain"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"name\":\"Plain Text\",\"email\":\"plain.{{runId}}@example.com\",\"phone\":\"555 123 4567\"}",
+							"options": {
+								"raw": {
+									"language": "text"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with a JSON-looking body but `Content-Type: text/plain` (a common Postman mistake: raw body type \"Text\").\n\n**Expected:** 415 telling the client to send JSON, instead of misleading \"is required\" errors."
 					},
 					"response": []
 				},
