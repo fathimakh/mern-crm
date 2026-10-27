@@ -45,17 +45,19 @@ const errorHandler = (err, req, res, next) => {
     message = 'Not authorized, invalid or expired token';
   }
 
+  const isProduction = process.env.NODE_ENV === 'production';
+
   if (statusCode >= 500) {
     console.error(err);
     // Do not leak internal details to clients in production
-    if (process.env.NODE_ENV === 'production') message = 'Internal server error';
+    if (isProduction) message = 'Internal server error';
   }
 
   res.status(statusCode).json({
     success: false,
     message,
     ...(errors && { errors }),
-    ...(process.env.NODE_ENV === 'development' && statusCode >= 500 && { stack: err.stack }),
+    ...(!isProduction && statusCode >= 500 && { stack: err.stack }),
   });
 };
 
