@@ -1,0 +1,759 @@
+newman
+
+MERN CRM API
+
+❏ 0. Health
+↳ Health check
+  ┌
+  │ 'Starting run 1793115332949'
+  └
+  GET http://localhost:5014/api/health [200 OK, 319B, 9ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "CRM API is running"
+  ✓  database is connected
+
+❏ 1. Auth
+↳ Register user A -> 201
+  POST http://localhost:5014/api/users/register [201 Created, 680B, 58ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 201 Created
+  ✓  success is true with message "Registration successful"
+  ✓  token is a JWT (3 base64url parts) whose payload id is the user id
+  ✓  user has an id, the name and a trimmed + lowercased email
+  ✓  password hash and __v are never returned
+
+↳ Register - empty body -> 400
+  POST http://localhost:5014/api/users/register [400 Bad Request, 405B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: name, email, password
+  ✓  no token is issued
+
+↳ Register - invalid email & weak password -> 400
+  POST http://localhost:5014/api/users/register [400 Bad Request, 434B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: email, password
+
+↳ Register - name & password too short -> 400
+  POST http://localhost:5014/api/users/register [400 Bad Request, 413B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: name, password
+
+↳ Register - duplicate email -> 409
+  POST http://localhost:5014/api/users/register [409 Conflict, 390B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 409 Conflict
+  ✓  success is false with message "An account with this email already exists"
+  ✓  errors lists exactly: email
+  ✓  no token is issued
+
+↳ Login user A -> 200
+  POST http://localhost:5014/api/users/login [200 OK, 668B, 62ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Login successful"
+  ✓  token is a JWT (3 base64url parts) whose payload id is the user id
+  ✓  returns the registered user
+  ✓  password hash and __v are never returned
+
+↳ Login - wrong password -> 401
+  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 54ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Invalid email or password"
+  ✓  no field errors are returned
+  ✓  no token or user is returned
+
+↳ Login - password with extra spaces -> 401 (passwords are not trimmed)
+  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 54ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Invalid email or password"
+  ✓  no field errors are returned
+  ✓  no token is issued
+
+↳ Login - unknown email -> 401
+  POST http://localhost:5014/api/users/login [401 Unauthorized, 314B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Invalid email or password"
+  ✓  no field errors are returned
+  ✓  no token is issued
+
+↳ Login - empty body -> 400
+  POST http://localhost:5014/api/users/login [400 Bad Request, 379B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: email, password
+
+↳ Login - invalid email format -> 400
+  POST http://localhost:5014/api/users/login [400 Bad Request, 364B, 0µs]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: email
+
+↳ Get profile -> 200
+  GET http://localhost:5014/api/users/profile [200 OK, 456B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  returns the logged-in user A
+  ✓  password hash and __v are never returned
+
+↳ Get profile - lowercase "bearer" scheme -> 200
+  GET http://localhost:5014/api/users/profile [200 OK, 456B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  returns user A
+
+↳ Get profile - no token -> 401
+  GET http://localhost:5014/api/users/profile [401 Unauthorized, 322B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, no token provided"
+  ✓  no field errors are returned
+  ✓  no user data is returned
+
+↳ Get profile - garbage token -> 401
+  GET http://localhost:5014/api/users/profile [401 Unauthorized, 318B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, invalid token"
+  ✓  no field errors are returned
+  ✓  no user data is returned
+
+❏ 2. Customers - CRUD
+↳ Create customer (all fields, status Prospect) -> 201
+  POST http://localhost:5014/api/customers [201 Created, 646B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 201 Created
+  ✓  success is true with message "Customer added successfully"
+  ✓  customer has an id and is owned by user A
+  ✓  fields are stored (name trimmed, email lowercased, status Prospect)
+  ✓  timestamps are set and __v is hidden
+
+↳ Create customer (required fields only, status defaults to Lead) -> 201
+  POST http://localhost:5014/api/customers [201 Created, 599B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 201 Created
+  ✓  success is true with message "Customer added successfully"
+  ✓  status defaults to Lead, optional fields default to ""
+  ✓  required fields are stored and owner is user A
+
+↳ List customers -> 200 (newest first)
+  GET http://localhost:5014/api/customers [200 OK, 890B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  contains exactly the two customers created in this run
+  ✓  every customer belongs to user A
+  ✓  sorted newest first (createdAt descending)
+
+↳ List customers ?search=ALICE -> 200 (case-insensitive name match)
+  GET http://localhost:5014/api/customers?search=ALICE [200 OK, 614B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  only Alice matches
+
+↳ List customers ?search=7946 -> 200 (phone match)
+  GET http://localhost:5014/api/customers?search=7946 [200 OK, 567B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  only Bob matches
+
+↳ List customers ?search=.* -> 200 (regex characters are literal)
+  GET http://localhost:5014/api/customers?search=.* [200 OK, 290B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  no customers match the literal text ".*"
+
+↳ List customers ?status=Prospect -> 200
+  GET http://localhost:5014/api/customers?status=Prospect [200 OK, 614B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  only Prospect customers are returned (Alice)
+
+↳ List customers ?status=Lead -> 200
+  GET http://localhost:5014/api/customers?status=Lead [200 OK, 567B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  only Lead customers are returned (Bob)
+
+↳ List customers ?search=alice&status=Lead -> 200 (filters combine)
+  GET http://localhost:5014/api/customers?search=alice&status=Lead [200 OK, 290B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  no customer matches both filters
+
+↳ Get customer by id -> 200
+  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 601B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  returns Alice with all fields
+
+↳ Update customer (PUT) -> 200
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 651B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer updated successfully"
+  ✓  sent fields are updated
+  ✓  fields that were not sent are unchanged
+  ✓  updatedAt moved forward, createdAt unchanged
+
+↳ Get customer after update -> 200 (changes persisted)
+  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 609B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  updated values are persisted
+
+↳ Delete customer -> 200
+  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [200 OK, 354B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer deleted successfully"
+  ✓  returns the id of the deleted customer
+
+↳ Get deleted customer -> 404
+  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [404 Not Found, 304B, 7ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ Delete deleted customer again -> 404
+  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a2 [404 Not Found, 304B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ List customers after delete -> 200
+  GET http://localhost:5014/api/customers [200 OK, 567B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  deleted customer is gone, Bob remains
+
+❏ 3. Customers - Validation & Errors
+↳ Create customer - empty body -> 400
+  POST http://localhost:5014/api/customers [400 Bad Request, 399B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: name, email, phone
+
+↳ Create customer - invalid name/email/phone/status -> 400
+  POST http://localhost:5014/api/customers [400 Bad Request, 570B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: name, email, phone, status
+
+↳ Create customer - wrong type & length limits -> 400
+  POST http://localhost:5014/api/customers [400 Bad Request, 506B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: name, phone, company, notes
+
+↳ Create customer - null status -> 400
+  POST http://localhost:5014/api/customers [400 Bad Request, 384B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: status
+  ✓  no customer is created
+
+↳ Create helper customer Carol -> 201
+  POST http://localhost:5014/api/customers [201 Created, 608B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 201 Created
+  ✓  success is true with message "Customer added successfully"
+  ✓  Carol is created as Active for user A
+
+↳ Create customer - duplicate email -> 409
+  POST http://localhost:5014/api/customers [409 Conflict, 390B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 409 Conflict
+  ✓  success is false with message "A customer with this email already exists"
+  ✓  errors lists exactly: email
+  ✓  no customer data is returned
+
+↳ Update customer - empty body -> 400
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 409B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: fields
+
+↳ Update customer - only non-editable fields -> 400
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 409B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: fields
+
+↳ Update customer - blank required fields -> 400
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 411B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: name, email, phone
+
+↳ Update customer - invalid values -> 400
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 468B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: email, status, notes
+
+↳ Update customer - null status -> 400
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [400 Bad Request, 384B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Validation failed"
+  ✓  errors lists exactly: status
+  ✓  no customer data is returned
+
+↳ Update customer - set company & notes -> 200
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a4 [200 OK, 633B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer updated successfully"
+  ✓  company and notes are saved
+
+↳ Update customer - null company & notes clear them -> 200
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a4 [200 OK, 605B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer updated successfully"
+  ✓  company and notes are cleared to empty strings (not null)
+  ✓  other fields are unchanged
+
+↳ Update customer - email used by another customer -> 409
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [409 Conflict, 390B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 409 Conflict
+  ✓  success is false with message "A customer with this email already exists"
+  ✓  errors lists exactly: email
+  ✓  no customer data is returned
+
+↳ Update customer - keeping its own email -> 200
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [200 OK, 608B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer updated successfully"
+  ✓  own email is accepted and company is updated
+
+↳ Get customer - malformed id -> 400
+  GET http://localhost:5014/api/customers/12345 [400 Bad Request, 345B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Invalid customer id"
+  ✓  errors lists exactly: id
+  ✓  no customer data is returned
+
+↳ Update customer - malformed id -> 400
+  PUT http://localhost:5014/api/customers/not-a-valid-id [400 Bad Request, 345B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Invalid customer id"
+  ✓  errors lists exactly: id
+  ✓  no customer data is returned
+
+↳ Delete customer - malformed id -> 400
+  DELETE http://localhost:5014/api/customers/zzzzzzzzzzzzzzzzzzzzzzzz [400 Bad Request, 345B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Invalid customer id"
+  ✓  errors lists exactly: id
+  ✓  no customer data is returned
+
+↳ Get customer - valid but nonexistent id -> 404
+  GET http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ Update customer - valid but nonexistent id -> 404
+  PUT http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ Delete customer - valid but nonexistent id -> 404
+  DELETE http://localhost:5014/api/customers/ffffffffffffffffffffffff [404 Not Found, 304B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ List customers - invalid status -> 400
+  GET http://localhost:5014/api/customers?status=VIP [400 Bad Request, 391B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Invalid query parameters"
+  ✓  errors lists exactly: status
+  ✓  no customer list is returned
+
+↳ List customers - search too long -> 400
+  GET http://localhost:5014/api/customers?search=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa [400 Bad Request, 371B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Invalid query parameters"
+  ✓  errors lists exactly: search
+  ✓  no customer list is returned
+
+❏ 4. Security & Misc
+↳ Register user B -> 201
+  POST http://localhost:5014/api/users/register [201 Created, 679B, 56ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 201 Created
+  ✓  success is true with message "Registration successful"
+  ✓  token is a JWT (3 base64url parts) whose payload id is the user id
+  ✓  user B is a different user
+  ✓  password hash and __v are never returned
+
+↳ User B cannot GET user A's customer -> 404
+  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 304B, 6ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ User B cannot UPDATE user A's customer -> 404
+  PUT http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 304B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ User B cannot DELETE user A's customer -> 404
+  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 304B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Customer not found"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ User B's list excludes user A's customers -> 200
+  GET http://localhost:5014/api/customers [200 OK, 290B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  B sees none of A's customers
+
+↳ User B creates customer with A's customer email + spoofed owner -> 201
+  POST http://localhost:5014/api/customers [201 Created, 599B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 201 Created
+  ✓  success is true with message "Customer added successfully"
+  ✓  owner is user B even though the body claimed user A
+  ✓  same email as A's customer is allowed for a different user
+
+↳ User B's list shows only B's customer -> 200
+  GET http://localhost:5014/api/customers [200 OK, 567B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  only B's own customer is listed
+
+↳ User A's customer is unchanged after B's attempts -> 200
+  GET http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [200 OK, 566B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  record still exists with A's values
+
+↳ User A's list excludes user B's customer -> 200
+  GET http://localhost:5014/api/customers [200 OK, 864B, 4ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  A sees only A's customers
+
+↳ List customers without token -> 401
+  GET http://localhost:5014/api/customers [401 Unauthorized, 322B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, no token provided"
+  ✓  no field errors are returned
+  ✓  no customer list is returned
+
+↳ Create customer without token -> 401
+  POST http://localhost:5014/api/customers [401 Unauthorized, 322B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, no token provided"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ Customers with Basic auth scheme -> 401
+  GET http://localhost:5014/api/customers [401 Unauthorized, 322B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, no token provided"
+  ✓  no field errors are returned
+
+↳ Customers with forged token payload -> 401
+  GET http://localhost:5014/api/customers [401 Unauthorized, 318B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, invalid token"
+  ✓  no field errors are returned
+  ✓  no customer list is returned
+  ✓  the token sent was really forged (A's signature, edited payload)
+
+↳ Customers with unsigned (alg none) token -> 401
+  GET http://localhost:5014/api/customers [401 Unauthorized, 318B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 401 Unauthorized
+  ✓  success is false with message "Not authorized, invalid token"
+  ✓  no field errors are returned
+  ✓  no customer list is returned
+  ✓  the token sent was really an unsigned alg:none JWT
+
+↳ Unknown route -> 404
+  GET http://localhost:5014/api/does-not-exist [404 Not Found, 326B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with message "Route not found: GET /api/does-not-exist"
+  ✓  no field errors are returned
+
+↳ Unsupported method on a customer -> 404
+  PATCH http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [404 Not Found, 348B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 404 Not Found
+  ✓  success is false with a "Route not found" message
+
+↳ Malformed JSON body -> 400
+  POST http://localhost:5014/api/customers [400 Bad Request, 318B, 1ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 400 Bad Request
+  ✓  success is false with message "Malformed JSON in request body"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ Payload too large -> 413
+  POST http://localhost:5014/api/customers [413 Payload Too Large, 319B, 2ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  [common] error has a message and no stack trace
+  ✓  Status code is 413 Payload Too Large
+  ✓  success is false with message "Request body is too large"
+  ✓  no field errors are returned
+  ✓  no customer data is returned
+
+↳ Cleanup - delete user B's customer -> 200
+  DELETE http://localhost:5014/api/customers/6ae0c4c6cd70008055ebc0a6 [200 OK, 354B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer deleted successfully"
+  ✓  deleted the expected customer
+
+↳ Cleanup - delete user A's customer Bob -> 200
+  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a3 [200 OK, 354B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer deleted successfully"
+  ✓  deleted the expected customer
+
+↳ Cleanup - delete user A's customer Carol -> 200
+  DELETE http://localhost:5014/api/customers/6ae0c4c5cd70008055ebc0a4 [200 OK, 354B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true with message "Customer deleted successfully"
+  ✓  deleted the expected customer
+
+↳ Cleanup - user A has no customers left -> 200
+  GET http://localhost:5014/api/customers [200 OK, 290B, 5ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  user A has no customers left
+
+↳ Cleanup - user B has no customers left -> 200
+  GET http://localhost:5014/api/customers [200 OK, 290B, 3ms]
+  ✓  [common] response is JSON
+  ✓  [common] success flag matches the HTTP status
+  ✓  Status code is 200 OK
+  ✓  success is true
+  ✓  count matches the customers array length
+  ✓  user B has no customers left
+
+┌─────────────────────────┬──────────────────┬─────────────────┐
+│                         │         executed │          failed │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│              iterations │                1 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│                requests │               78 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│            test-scripts │              156 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│      prerequest-scripts │               86 │               0 │
+├─────────────────────────┼──────────────────┼─────────────────┤
+│              assertions │              494 │               0 │
+├─────────────────────────┴──────────────────┴─────────────────┤
+│ total run duration: 1596ms                                   │
+├──────────────────────────────────────────────────────────────┤
+│ total data received: 14.02kB (approx)                        │
+├──────────────────────────────────────────────────────────────┤
+│ average response time: 6ms [min: 1ms, max: 62ms, s.d.: 13ms] │
+└──────────────────────────────────────────────────────────────┘

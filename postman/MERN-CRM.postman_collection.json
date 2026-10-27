@@ -1,0 +1,4498 @@
+{
+	"info": {
+		"_postman_id": "5b1f6c2e-8a3d-4f0b-9c71-2e4d6a8b0c14",
+		"name": "MERN CRM API",
+		"description": "# MERN CRM API - Postman test suite (Assignment 14)\n\nEnd-to-end tests for the Express 5 + Mongoose CRM API: health, JWT auth, customer CRUD, search/filter, validation and error handling, and per-user data isolation. Every request has assertions on the HTTP status **and** the JSON body.\n\n## Prerequisites\n- MongoDB running and the API started (`npm run server` from the project root) on **http://localhost:5014**.\n- Environment **MERN CRM - Local** (`postman/MERN-CRM.postman_environment.json`) which sets `baseUrl = http://localhost:5014/api`.\n\n## Run in Postman.app\n1. **Import** `postman/MERN-CRM.postman_collection.json` and `postman/MERN-CRM.postman_environment.json`.\n2. Select the **MERN CRM - Local** environment (top right).\n3. Open the collection, click **Run**, keep the default order (folders 0 to 4), then **Run MERN CRM API**.\n\nRequests depend on each other (tokens and ids are saved by earlier requests), so run the whole collection in order. To send requests by hand, send \"0. Health\" and \"1. Auth / Register user A\" first.\n\n## Run from the command line (newman)\nFrom the project root:\n\n```bash\nnpm run test:api\n# same as\nnpx newman run postman/MERN-CRM.postman_collection.json -e postman/MERN-CRM.postman_environment.json\n\n# HTML report (newman-reporter-htmlextra)\nnpx -y -p newman@6 -p newman-reporter-htmlextra newman run postman/MERN-CRM.postman_collection.json \\\n  -e postman/MERN-CRM.postman_environment.json -r cli,htmlextra \\\n  --reporter-htmlextra-export postman/newman-report.html\n```\n\n## How it works\n- **Re-runnable:** the collection-level pre-request script creates a unique `runId` (`Date.now()`) only when one is not already set for this run, and \"0. Health\" (the first request) starts every run with a fresh `runId` and clears values left over from a previous run. All user emails contain `runId`, so the suite can run any number of times against the same database.\n- **Runtime values** are stored with `pm.collectionVariables` (works in Postman.app and newman without exporting an environment): `token`, `tokenB`, `userId`, `userIdB`, `emailA`, `customerId`, `customerId2`, `customerId3`, `customerIdB`, ...\n- **Auth:** collection-level Bearer `{{token}}` (user A). Public and negative requests use *No Auth*; user B requests override it with `{{tokenB}}`.\n- **Common checks** (collection-level test script) on every response: JSON content type, `success` flag matches the HTTP status, error responses carry a message and never leak a stack trace.\n- **Cleanup:** the last requests of \"4. Security & Misc\" delete every customer created by the run and verify both users have 0 customers. The two test users remain (the API has no delete-user endpoint).\n\n## Folders\n0. Health - API and database are up.\n1. Auth - register / login / profile, including validation, duplicate email, wrong credentials and missing/garbage tokens.\n2. Customers - CRUD - create, list (newest first), search, status filter, get, update, delete, 404 after delete.\n3. Customers - Validation & Errors - 400 field errors, 409 duplicates, malformed ids (400), unknown ids (404), invalid query params.\n4. Security & Misc - user isolation (user B vs user A), missing/forged/unsigned tokens, unknown route, malformed and oversized JSON, cleanup.\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "0. Health",
+			"description": "Smoke test: the API is up and connected to MongoDB. This is also the first request of every run, so its pre-request script starts a fresh run (new `runId`, cleared runtime variables).",
+			"item": [
+				{
+					"name": "Health check",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// First request of the suite => start a brand-new run.",
+									"// (In Postman.app collection variables survive between runs, so reset them here.)",
+									"[",
+									"  'token', 'tokenB', 'userId', 'userIdB', 'emailA',",
+									"  'customerId', 'customerId2', 'customerId3', 'customerIdB',",
+									"  'customerEmail', 'customerEmail2', 'customerEmail3',",
+									"  'customerCreatedAt', 'customerUpdatedAt'",
+									"].forEach(function (key) { pm.collectionVariables.set(key, ''); });",
+									"pm.collectionVariables.set('runId', String(Date.now()));",
+									"console.log('Starting run ' + pm.collectionVariables.get('runId'));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"CRM API is running\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"CRM API is running\");",
+									"});",
+									"pm.test('database is connected', function () {",
+									"  pm.expect(body.database).to.equal('connected');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "GET /api/health (public). Checks that the API is running and connected to MongoDB.\n\nAlso starts a new test run: generates a fresh `runId` and clears tokens/ids left over from a previous (possibly aborted) run.\n\n**Expected:** 200 `{ success: true, message: \"CRM API is running\", database: \"connected\" }`"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "1. Auth",
+			"description": "Registration, login and profile for the main test user (user A). Saves `token`, `userId` and `emailA` for later folders.",
+			"item": [
+				{
+					"name": "Register user A -> 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Registration successful\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Registration successful\");",
+									"});",
+									"pm.test('token is a JWT (3 base64url parts) whose payload id is the user id', function () {",
+									"  pm.expect(body.token).to.be.a('string');",
+									"  const parts = body.token.split('.');",
+									"  pm.expect(parts).to.have.lengthOf(3);",
+									"  parts.forEach(function (part) { pm.expect(part).to.match(/^[A-Za-z0-9_-]+$/); });",
+									"  const cryptoJs = require('crypto-js');",
+									"  let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+									"  while (b64.length % 4) b64 += '=';",
+									"  const payload = JSON.parse(cryptoJs.enc.Base64.parse(b64).toString(cryptoJs.enc.Utf8));",
+									"  pm.expect(payload.id).to.equal(body.user._id);",
+									"  pm.expect(payload.exp).to.be.above(payload.iat);",
+									"});",
+									"const expectedEmail = 'postman.a.' + pm.collectionVariables.get('runId') + '@example.com';",
+									"pm.test('user has an id, the name and a trimmed + lowercased email', function () {",
+									"  pm.expect(body.user).to.be.an('object');",
+									"  pm.expect(body.user._id).to.match(/^[a-f\\d]{24}$/);",
+									"  pm.expect(body.user.name).to.equal('Postman Tester');",
+									"  pm.expect(body.user.email).to.equal(expectedEmail);",
+									"  pm.expect(body.user.createdAt).to.be.a('string');",
+									"});",
+									"pm.test('password hash and __v are never returned', function () {",
+									"  pm.expect(body.user).to.not.have.property('password');",
+									"  pm.expect(body.user).to.not.have.property('__v');",
+									"});",
+									"if (pm.response.code === 201) {",
+									"  pm.collectionVariables.set('token', body.token);",
+									"  pm.collectionVariables.set('userId', body.user._id);",
+									"  pm.collectionVariables.set('emailA', body.user.email);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Postman Tester\",\n  \"email\": \"  Postman.A.{{runId}}@Example.COM \",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"register"
+							]
+						},
+						"description": "POST /api/users/register with a mixed-case, padded email (unique per run via `{{runId}}`).\n\n**Expected:** 201, `message: \"Registration successful\"`, a JWT `token`, and a `user` without `password` whose email is trimmed + lowercased. Saves `token`, `userId`, `emailA`."
+					},
+					"response": []
+				},
+				{
+					"name": "Register - empty body -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: name, email, password\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"name\":\"Name is required\",\"email\":\"Email is required\",\"password\":\"Password is required\"});",
+									"});",
+									"pm.test('no token is issued', function () {",
+									"  pm.expect(body).to.not.have.property('token');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"register"
+							]
+						},
+						"description": "POST /api/users/register with `{}`.\n\n**Expected:** 400 `Validation failed` with `errors.name`, `errors.email`, `errors.password` = \"... is required\"; no token."
+					},
+					"response": []
+				},
+				{
+					"name": "Register - invalid email & weak password -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: email, password\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"Please provide a valid email address\",\"password\":\"Password must contain at least one letter and one number\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Weak Password\",\n  \"email\": \"not-an-email\",\n  \"password\": \"abcdefgh\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"register"
+							]
+						},
+						"description": "POST /api/users/register with a malformed email and a letters-only password.\n\n**Expected:** 400 `Validation failed`, `errors.email` (invalid email) and `errors.password` (needs a letter and a number). `name` is valid so it is not listed."
+					},
+					"response": []
+				},
+				{
+					"name": "Register - name & password too short -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: name, password\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"name\":\"Name must be at least 2 characters\",\"password\":\"Password must be at least 6 characters\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"X\",\n  \"email\": \"short.{{runId}}@example.com\",\n  \"password\": \"a1\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"register"
+							]
+						},
+						"description": "POST /api/users/register with a 1-character name and a 2-character password.\n\n**Expected:** 400 `Validation failed`, `errors.name` (min 2) and `errors.password` (min 6)."
+					},
+					"response": []
+				},
+				{
+					"name": "Register - duplicate email -> 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"An account with this email already exists\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"An account with this email already exists\");",
+									"});",
+									"pm.test(\"errors lists exactly: email\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"An account with this email already exists\"});",
+									"});",
+									"pm.test('no token is issued', function () {",
+									"  pm.expect(body).to.not.have.property('token');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Postman Tester\",\n  \"email\": \"POSTMAN.A.{{runId}}@EXAMPLE.COM\",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"register"
+							]
+						},
+						"description": "POST /api/users/register again with user A's email in UPPER case (emails are case-insensitive).\n\n**Expected:** 409 `An account with this email already exists` with `errors.email`; no token."
+					},
+					"response": []
+				},
+				{
+					"name": "Login user A -> 200",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Login is case-insensitive on the email: send it in upper case",
+									"pm.variables.set('loginEmail', String(pm.collectionVariables.get('emailA')).toUpperCase());"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Login successful\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Login successful\");",
+									"});",
+									"pm.test('token is a JWT (3 base64url parts) whose payload id is the user id', function () {",
+									"  pm.expect(body.token).to.be.a('string');",
+									"  const parts = body.token.split('.');",
+									"  pm.expect(parts).to.have.lengthOf(3);",
+									"  parts.forEach(function (part) { pm.expect(part).to.match(/^[A-Za-z0-9_-]+$/); });",
+									"  const cryptoJs = require('crypto-js');",
+									"  let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+									"  while (b64.length % 4) b64 += '=';",
+									"  const payload = JSON.parse(cryptoJs.enc.Base64.parse(b64).toString(cryptoJs.enc.Utf8));",
+									"  pm.expect(payload.id).to.equal(body.user._id);",
+									"  pm.expect(payload.exp).to.be.above(payload.iat);",
+									"});",
+									"pm.test('returns the registered user', function () {",
+									"  pm.expect(body.user._id).to.equal(pm.collectionVariables.get('userId'));",
+									"  pm.expect(body.user.email).to.equal(pm.collectionVariables.get('emailA'));",
+									"  pm.expect(body.user.name).to.equal('Postman Tester');",
+									"});",
+									"pm.test('password hash and __v are never returned', function () {",
+									"  pm.expect(body.user).to.not.have.property('password');",
+									"  pm.expect(body.user).to.not.have.property('__v');",
+									"});",
+									"if (pm.response.code === 200) pm.collectionVariables.set('token', body.token);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{loginEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with user A's email in UPPER case and the correct password.\n\n**Expected:** 200 `Login successful`, a JWT `token` and the same user (no password). Saves the fresh `token`."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - wrong password -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid email or password\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid email or password\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no token or user is returned', function () {",
+									"  pm.expect(body).to.not.have.property('token');",
+									"  pm.expect(body).to.not.have.property('user');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{emailA}}\",\n  \"password\": \"Wrong12345\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with user A's email and a wrong password.\n\n**Expected:** 401 `Invalid email or password`, no token."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - password with extra spaces -> 401 (passwords are not trimmed)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid email or password\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid email or password\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no token is issued', function () {",
+									"  pm.expect(body).to.not.have.property('token');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{emailA}}\",\n  \"password\": \" {{password}} \"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with user A's password wrapped in spaces. Passwords are compared exactly as typed (the validation middleware trims other fields, but never passwords).\n\n**Expected:** 401 `Invalid email or password`."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - unknown email -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid email or password\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid email or password\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no token is issued', function () {",
+									"  pm.expect(body).to.not.have.property('token');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"nobody.{{runId}}@example.com\",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with an email that was never registered.\n\n**Expected:** 401 with the same generic `Invalid email or password` message (no account enumeration)."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - empty body -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: email, password\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"Email is required\",\"password\":\"Password is required\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with `{}`.\n\n**Expected:** 400 `Validation failed` with `errors.email` and `errors.password` required."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - invalid email format -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: email\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"Please provide a valid email address\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "POST /api/users/login with a malformed email.\n\n**Expected:** 400 `Validation failed` with only `errors.email`."
+					},
+					"response": []
+				},
+				{
+					"name": "Get profile -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('returns the logged-in user A', function () {",
+									"  pm.expect(body.user._id).to.equal(pm.collectionVariables.get('userId'));",
+									"  pm.expect(body.user.email).to.equal(pm.collectionVariables.get('emailA'));",
+									"  pm.expect(body.user.name).to.equal('Postman Tester');",
+									"});",
+									"pm.test('password hash and __v are never returned', function () {",
+									"  pm.expect(body.user).to.not.have.property('password');",
+									"  pm.expect(body.user).to.not.have.property('__v');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"profile"
+							]
+						},
+						"description": "GET /api/users/profile with `Authorization: Bearer {{token}}` (collection auth).\n\n**Expected:** 200 `{ success: true, user }` - the logged-in user A, without password."
+					},
+					"response": []
+				},
+				{
+					"name": "Get profile - lowercase \"bearer\" scheme -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('returns user A', function () {",
+									"  pm.expect(body.user._id).to.equal(pm.collectionVariables.get('userId'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "bearer {{token}}"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"profile"
+							]
+						},
+						"description": "GET /api/users/profile with `Authorization: bearer <token>`. The auth scheme name is case-insensitive (RFC 7235).\n\n**Expected:** 200 with user A."
+					},
+					"response": []
+				},
+				{
+					"name": "Get profile - no token -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, no token provided\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, no token provided\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no user data is returned', function () {",
+									"  pm.expect(body).to.not.have.property('user');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"profile"
+							]
+						},
+						"description": "GET /api/users/profile without an Authorization header.\n\n**Expected:** 401 `Not authorized, no token provided`."
+					},
+					"response": []
+				},
+				{
+					"name": "Get profile - garbage token -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, invalid token\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, invalid token\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no user data is returned', function () {",
+									"  pm.expect(body).to.not.have.property('user');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "garbage-token",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"profile"
+							]
+						},
+						"description": "GET /api/users/profile with `Authorization: Bearer garbage-token`.\n\n**Expected:** 401 `Not authorized, invalid token`."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Customers - CRUD",
+			"description": "Happy-path create / list / search / filter / read / update / delete for user A. Creates \"Alice\" (`customerId`, deleted at the end of this folder) and \"Bob\" (`customerId2`, kept for folders 3 and 4).",
+			"item": [
+				{
+					"name": "Create customer (all fields, status Prospect) -> 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer added successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer added successfully\");",
+									"});",
+									"const c = body.customer;",
+									"const runId = pm.collectionVariables.get('runId');",
+									"pm.test('customer has an id and is owned by user A', function () {",
+									"  pm.expect(c._id).to.match(/^[a-f\\d]{24}$/);",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userId'));",
+									"});",
+									"pm.test('fields are stored (name trimmed, email lowercased, status Prospect)', function () {",
+									"  pm.expect(c.name).to.equal('Alice Johnson');",
+									"  pm.expect(c.email).to.equal('alice.johnson.' + runId + '@example.com');",
+									"  pm.expect(c.phone).to.equal('+1 (555) 010-1234');",
+									"  pm.expect(c.company).to.equal('Acme Corp');",
+									"  pm.expect(c.status).to.equal('Prospect');",
+									"  pm.expect(c.notes).to.equal('Met at the trade show.');",
+									"});",
+									"pm.test('timestamps are set and __v is hidden', function () {",
+									"  pm.expect(c.createdAt).to.be.a('string');",
+									"  pm.expect(c.updatedAt).to.equal(c.createdAt);",
+									"  pm.expect(c).to.not.have.property('__v');",
+									"});",
+									"if (pm.response.code === 201) {",
+									"  pm.collectionVariables.set('customerId', c._id);",
+									"  pm.collectionVariables.set('customerEmail', c.email);",
+									"  pm.collectionVariables.set('customerCreatedAt', c.createdAt);",
+									"  pm.collectionVariables.set('customerUpdatedAt', c.updatedAt);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"  Alice Johnson \",\n  \"email\": \"Alice.Johnson.{{runId}}@Example.com\",\n  \"phone\": \"+1 (555) 010-1234\",\n  \"company\": \"Acme Corp\",\n  \"status\": \"Prospect\",\n  \"notes\": \"Met at the trade show.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with every field and an explicit `status: \"Prospect\"` (name padded, email mixed case).\n\n**Expected:** 201 `Customer added successfully`; the customer is owned by user A, name trimmed, email lowercased. Saves `customerId`, `customerEmail`, `customerCreatedAt`, `customerUpdatedAt`."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer (required fields only, status defaults to Lead) -> 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer added successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer added successfully\");",
+									"});",
+									"const c = body.customer;",
+									"pm.test('status defaults to Lead, optional fields default to \"\"', function () {",
+									"  pm.expect(c.status).to.equal('Lead');",
+									"  pm.expect(c.company).to.equal('');",
+									"  pm.expect(c.notes).to.equal('');",
+									"});",
+									"pm.test('required fields are stored and owner is user A', function () {",
+									"  pm.expect(c._id).to.match(/^[a-f\\d]{24}$/);",
+									"  pm.expect(c.name).to.equal('Bob Smith');",
+									"  pm.expect(c.email).to.equal('bob.smith.' + pm.collectionVariables.get('runId') + '@example.com');",
+									"  pm.expect(c.phone).to.equal('020 7946 0018');",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userId'));",
+									"});",
+									"if (pm.response.code === 201) {",
+									"  pm.collectionVariables.set('customerId2', c._id);",
+									"  pm.collectionVariables.set('customerEmail2', c.email);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Bob Smith\",\n  \"email\": \"bob.smith.{{runId}}@example.com\",\n  \"phone\": \"020 7946 0018\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with only name, email and phone (no status).\n\n**Expected:** 201; `status` defaults to `Lead`, `company` and `notes` default to \"\". Saves `customerId2`, `customerEmail2`."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers -> 200 (newest first)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"const id1 = pm.collectionVariables.get('customerId');",
+									"const id2 = pm.collectionVariables.get('customerId2');",
+									"pm.test('contains exactly the two customers created in this run', function () {",
+									"  pm.expect(body.count).to.equal(2);",
+									"  pm.expect(ids).to.include.members([id1, id2]);",
+									"});",
+									"pm.test('every customer belongs to user A', function () {",
+									"  body.customers.forEach(function (c) { pm.expect(c.user).to.equal(pm.collectionVariables.get('userId')); });",
+									"});",
+									"pm.test('sorted newest first (createdAt descending)', function () {",
+									"  const times = body.customers.map(function (c) { return new Date(c.createdAt).getTime(); });",
+									"  for (let i = 1; i < times.length; i++) {",
+									"    pm.expect(times[i - 1], 'createdAt[' + (i - 1) + '] >= createdAt[' + i + ']').to.be.at.least(times[i]);",
+									"  }",
+									"  const t1 = new Date(body.customers[ids.indexOf(id1)].createdAt).getTime();",
+									"  const t2 = new Date(body.customers[ids.indexOf(id2)].createdAt).getTime();",
+									"  if (t2 > t1) pm.expect(ids.indexOf(id2), 'Bob (newer) is listed before Alice').to.be.below(ids.indexOf(id1));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers.\n\n**Expected:** 200 `{ success, count, customers }`; user A (new this run) has exactly the 2 customers just created, all owned by A, sorted by `createdAt` descending."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers ?search=ALICE -> 200 (case-insensitive name match)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('only Alice matches', function () {",
+									"  pm.expect(body.count).to.equal(1);",
+									"  pm.expect(ids).to.deep.equal([pm.collectionVariables.get('customerId')]);",
+									"  pm.expect(body.customers[0].name).to.equal('Alice Johnson');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?search=ALICE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "ALICE"
+								}
+							]
+						},
+						"description": "GET /api/customers?search=ALICE.\n\n**Expected:** 200 with only Alice (search is case-insensitive over name/email/company/phone)."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers ?search=7946 -> 200 (phone match)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('only Bob matches', function () {",
+									"  pm.expect(body.count).to.equal(1);",
+									"  pm.expect(ids).to.deep.equal([pm.collectionVariables.get('customerId2')]);",
+									"  pm.expect(body.customers[0].phone).to.include('7946');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?search=7946",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "7946"
+								}
+							]
+						},
+						"description": "GET /api/customers?search=7946 (part of Bob's phone number).\n\n**Expected:** 200 with only Bob."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers ?search=.* -> 200 (regex characters are literal)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('no customers match the literal text \".*\"', function () {",
+									"  pm.expect(body.count).to.equal(0);",
+									"  pm.expect(ids).to.be.empty;",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?search=.*",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": ".*"
+								}
+							]
+						},
+						"description": "GET /api/customers?search=.* - regex metacharacters must be escaped by the server, so this matches nothing instead of everything.\n\n**Expected:** 200, `count: 0`."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers ?status=Prospect -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('only Prospect customers are returned (Alice)', function () {",
+									"  pm.expect(body.count).to.equal(1);",
+									"  pm.expect(ids).to.deep.equal([pm.collectionVariables.get('customerId')]);",
+									"  body.customers.forEach(function (c) { pm.expect(c.status).to.equal('Prospect'); });",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?status=Prospect",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "Prospect"
+								}
+							]
+						},
+						"description": "GET /api/customers?status=Prospect.\n\n**Expected:** 200 with only Alice; every result has status Prospect."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers ?status=Lead -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('only Lead customers are returned (Bob)', function () {",
+									"  pm.expect(body.count).to.equal(1);",
+									"  pm.expect(ids).to.deep.equal([pm.collectionVariables.get('customerId2')]);",
+									"  body.customers.forEach(function (c) { pm.expect(c.status).to.equal('Lead'); });",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?status=Lead",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "Lead"
+								}
+							]
+						},
+						"description": "GET /api/customers?status=Lead.\n\n**Expected:** 200 with only Bob (default status Lead)."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers ?search=alice&status=Lead -> 200 (filters combine)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('no customer matches both filters', function () {",
+									"  pm.expect(body.count).to.equal(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?search=alice&status=Lead",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "alice"
+								},
+								{
+									"key": "status",
+									"value": "Lead"
+								}
+							]
+						},
+						"description": "GET /api/customers?search=alice&status=Lead - both filters apply (AND).\n\n**Expected:** 200, `count: 0` (Alice is a Prospect)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get customer by id -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"const c = body.customer;",
+									"pm.test('returns Alice with all fields', function () {",
+									"  pm.expect(c._id).to.equal(pm.collectionVariables.get('customerId'));",
+									"  pm.expect(c.name).to.equal('Alice Johnson');",
+									"  pm.expect(c.email).to.equal(pm.collectionVariables.get('customerEmail'));",
+									"  pm.expect(c.phone).to.equal('+1 (555) 010-1234');",
+									"  pm.expect(c.company).to.equal('Acme Corp');",
+									"  pm.expect(c.status).to.equal('Prospect');",
+									"  pm.expect(c.notes).to.equal('Met at the trade show.');",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userId'));",
+									"  pm.expect(c.createdAt).to.equal(pm.collectionVariables.get('customerCreatedAt'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						},
+						"description": "GET /api/customers/{{customerId}}.\n\n**Expected:** 200 `{ success: true, customer }` with all of Alice's fields."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer (PUT) -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer updated successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer updated successfully\");",
+									"});",
+									"const c = body.customer;",
+									"pm.test('sent fields are updated', function () {",
+									"  pm.expect(c.status).to.equal('Active');",
+									"  pm.expect(c.phone).to.equal('+1 555 010 9999');",
+									"  pm.expect(c.company).to.equal('Acme Corporation');",
+									"  pm.expect(c.notes).to.equal('Signed the annual contract.');",
+									"});",
+									"pm.test('fields that were not sent are unchanged', function () {",
+									"  pm.expect(c._id).to.equal(pm.collectionVariables.get('customerId'));",
+									"  pm.expect(c.name).to.equal('Alice Johnson');",
+									"  pm.expect(c.email).to.equal(pm.collectionVariables.get('customerEmail'));",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userId'));",
+									"});",
+									"pm.test('updatedAt moved forward, createdAt unchanged', function () {",
+									"  pm.expect(c.updatedAt).to.be.a('string');",
+									"  pm.expect(new Date(c.updatedAt).getTime()).to.be.above(new Date(pm.collectionVariables.get('customerUpdatedAt')).getTime());",
+									"  pm.expect(c.createdAt).to.equal(pm.collectionVariables.get('customerCreatedAt'));",
+									"});",
+									"if (pm.response.code === 200) pm.collectionVariables.set('customerUpdatedAt', c.updatedAt);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"Active\",\n  \"phone\": \"+1 555 010 9999\",\n  \"company\": \"Acme Corporation\",\n  \"notes\": \"Signed the annual contract.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId}} changing status, phone, company and notes (partial update).\n\n**Expected:** 200 `Customer updated successfully`; changed fields updated, name/email untouched, `updatedAt` moves forward, `createdAt` unchanged."
+					},
+					"response": []
+				},
+				{
+					"name": "Get customer after update -> 200 (changes persisted)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"const c = body.customer;",
+									"pm.test('updated values are persisted', function () {",
+									"  pm.expect(c.status).to.equal('Active');",
+									"  pm.expect(c.phone).to.equal('+1 555 010 9999');",
+									"  pm.expect(c.company).to.equal('Acme Corporation');",
+									"  pm.expect(c.notes).to.equal('Signed the annual contract.');",
+									"  pm.expect(c.name).to.equal('Alice Johnson');",
+									"  pm.expect(c.updatedAt).to.equal(pm.collectionVariables.get('customerUpdatedAt'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						},
+						"description": "GET /api/customers/{{customerId}} again.\n\n**Expected:** 200 and the values from the PUT are persisted in the database."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete customer -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer deleted successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer deleted successfully\");",
+									"});",
+									"pm.test('returns the id of the deleted customer', function () {",
+									"  pm.expect(body.customer._id).to.equal(pm.collectionVariables.get('customerId'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						},
+						"description": "DELETE /api/customers/{{customerId}}.\n\n**Expected:** 200 `Customer deleted successfully` with `customer._id` of the deleted record."
+					},
+					"response": []
+				},
+				{
+					"name": "Get deleted customer -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						},
+						"description": "GET /api/customers/{{customerId}} after it was deleted.\n\n**Expected:** 404 `Customer not found`."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete deleted customer again -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId}}"
+							]
+						},
+						"description": "DELETE /api/customers/{{customerId}} a second time.\n\n**Expected:** 404 `Customer not found` (delete is not silently successful)."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers after delete -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('deleted customer is gone, Bob remains', function () {",
+									"  pm.expect(body.count).to.equal(1);",
+									"  pm.expect(ids).to.include(pm.collectionVariables.get('customerId2'));",
+									"  pm.expect(ids).to.not.include(pm.collectionVariables.get('customerId'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers.\n\n**Expected:** 200 with only Bob left; Alice is gone."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Customers - Validation & Errors",
+			"description": "Request validation (400), duplicates (409), malformed ids (400) and valid-but-unknown ids (404). Creates helper customer \"Carol\" (`customerId3`) for the duplicate-email and null-clearing update checks.",
+			"item": [
+				{
+					"name": "Create customer - empty body -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: name, email, phone\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"name\":\"Name is required\",\"email\":\"Email is required\",\"phone\":\"Phone is required\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with `{}`.\n\n**Expected:** 400 `Validation failed` with `errors.name`, `errors.email`, `errors.phone` required."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer - invalid name/email/phone/status -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: name, email, phone, status\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"name\":\"Name can only contain letters, spaces, dots, apostrophes and hyphens\",\"email\":\"Please provide a valid email address\",\"phone\":\"Please provide a valid phone number (7-15 digits)\",\"status\":\"Status must be one of: Lead, Prospect, Active, Inactive\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"R2-D2\",\n  \"email\": \"not-an-email\",\n  \"phone\": \"call me\",\n  \"status\": \"VIP\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers where every field is present but invalid (digits in name, bad email, non-numeric phone, unknown status).\n\n**Expected:** 400 `Validation failed` with one message per field."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer - wrong type & length limits -> 400",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.variables.set('longCompany', 'C'.repeat(101));",
+									"pm.variables.set('longNotes', 'n'.repeat(501));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: name, phone, company, notes\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"name\":\"Name must be a text value\",\"phone\":\"Please provide a valid phone number (7-15 digits)\",\"company\":\"Company cannot exceed 100 characters\",\"notes\":\"Notes cannot exceed 500 characters\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": 12345,\n  \"email\": \"limits.{{runId}}@example.com\",\n  \"phone\": \"12345\",\n  \"company\": \"{{longCompany}}\",\n  \"notes\": \"{{longNotes}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with a numeric name, a 5-digit phone, a 101-char company and 501-char notes (generated in the pre-request script).\n\n**Expected:** 400 `Validation failed` with `errors.name` (must be text), `errors.phone` (7-15 digits), `errors.company` (max 100), `errors.notes` (max 500)."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer - null status -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: status\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"status\":\"Status must be one of: Lead, Prospect, Active, Inactive\"});",
+									"});",
+									"pm.test('no customer is created', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Null Status\",\n  \"email\": \"null.status.{{runId}}@example.com\",\n  \"phone\": \"555 222 3333\",\n  \"status\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with `status: null`. Status is optional (defaults to Lead) but, when sent, must be one of the allowed values.\n\n**Expected:** 400 `Validation failed` with `errors.status`."
+					},
+					"response": []
+				},
+				{
+					"name": "Create helper customer Carol -> 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer added successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer added successfully\");",
+									"});",
+									"const c = body.customer;",
+									"pm.test('Carol is created as Active for user A', function () {",
+									"  pm.expect(c.name).to.equal('Carol White');",
+									"  pm.expect(c.status).to.equal('Active');",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userId'));",
+									"});",
+									"if (pm.response.code === 201) {",
+									"  pm.collectionVariables.set('customerId3', c._id);",
+									"  pm.collectionVariables.set('customerEmail3', c.email);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Carol White\",\n  \"email\": \"carol.white.{{runId}}@example.com\",\n  \"phone\": \"+44 20 7946 0958\",\n  \"status\": \"Active\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "Setup: POST /api/customers creating a second live customer for user A (needed for the duplicate-email update test).\n\n**Expected:** 201 with status Active. Saves `customerId3`, `customerEmail3`."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer - duplicate email -> 409",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.variables.set('dupEmail', String(pm.collectionVariables.get('customerEmail2')).toUpperCase());"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"A customer with this email already exists\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"A customer with this email already exists\");",
+									"});",
+									"pm.test(\"errors lists exactly: email\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"A customer with this email already exists\"});",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Bob Duplicate\",\n  \"email\": \"{{dupEmail}}\",\n  \"phone\": \"555 000 1111\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers reusing Bob's email in UPPER case (same user).\n\n**Expected:** 409 `A customer with this email already exists` with `errors.email`."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - empty body -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: fields\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"fields\":\"Provide at least one field to update: name, email, phone, company, status, notes\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} with `{}`.\n\n**Expected:** 400 `Validation failed` with `errors.fields` listing the editable fields."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - only non-editable fields -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: fields\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"fields\":\"Provide at least one field to update: name, email, phone, company, status, notes\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user\": \"{{nonExistentId}}\",\n  \"_id\": \"{{nonExistentId}}\",\n  \"createdAt\": \"2000-01-01T00:00:00.000Z\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} sending only protected fields (`user`, `_id`, `createdAt`) - mass-assignment attempt.\n\n**Expected:** 400 `errors.fields` (nothing editable was sent)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - blank required fields -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: name, email, phone\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"name\":\"Name cannot be empty\",\"email\":\"Email cannot be empty\",\"phone\":\"Phone cannot be empty\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"   \",\n  \"email\": \"\",\n  \"phone\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} blanking the required fields (whitespace name, empty email, null phone).\n\n**Expected:** 400 `Validation failed` with `Name/Email/Phone cannot be empty`."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - invalid values -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: email, status, notes\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"Please provide a valid email address\",\"status\":\"Status must be one of: Lead, Prospect, Active, Inactive\",\"notes\":\"Notes must be a text value\"});",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"bob@\",\n  \"status\": \"Closed\",\n  \"notes\": 42\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} with a bad email, an unknown status and numeric notes.\n\n**Expected:** 400 `Validation failed` with `errors.email`, `errors.status`, `errors.notes`."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - null status -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Validation failed\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Validation failed\");",
+									"});",
+									"pm.test(\"errors lists exactly: status\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"status\":\"Status must be one of: Lead, Prospect, Active, Inactive\"});",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} with `status: null`.\n\n**Expected:** 400 `Validation failed` with `errors.status` (a status can be changed but never removed)."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - set company & notes -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer updated successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer updated successfully\");",
+									"});",
+									"pm.test('company and notes are saved', function () {",
+									"  pm.expect(body.customer.company).to.equal('White Logistics');",
+									"  pm.expect(body.customer.notes).to.equal('Prefers email');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"company\": \"White Logistics\",\n  \"notes\": \"Prefers email\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId3}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId3}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId3}} giving Carol a company and notes (set up for the next request).\n\n**Expected:** 200 with the new values."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - null company & notes clear them -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer updated successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer updated successfully\");",
+									"});",
+									"pm.test('company and notes are cleared to empty strings (not null)', function () {",
+									"  pm.expect(body.customer.company).to.equal('');",
+									"  pm.expect(body.customer.notes).to.equal('');",
+									"});",
+									"pm.test('other fields are unchanged', function () {",
+									"  pm.expect(body.customer.status).to.equal('Active');",
+									"  pm.expect(body.customer.email).to.equal(pm.collectionVariables.get('customerEmail3'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"company\": null,\n  \"notes\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId3}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId3}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId3}} with `company: null, notes: null`. Optional text fields are cleared to an empty string (never stored as null).\n\n**Expected:** 200, `company` and `notes` are `\"\"`, status unchanged."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - email used by another customer -> 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"A customer with this email already exists\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"A customer with this email already exists\");",
+									"});",
+									"pm.test(\"errors lists exactly: email\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"email\":\"A customer with this email already exists\"});",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{customerEmail3}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} changing Bob's email to Carol's email.\n\n**Expected:** 409 `A customer with this email already exists` with `errors.email`."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - keeping its own email -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer updated successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer updated successfully\");",
+									"});",
+									"pm.test('own email is accepted and company is updated', function () {",
+									"  pm.expect(body.customer._id).to.equal(pm.collectionVariables.get('customerId2'));",
+									"  pm.expect(body.customer.email).to.equal(pm.collectionVariables.get('customerEmail2'));",
+									"  pm.expect(body.customer.company).to.equal('Smith & Sons');",
+									"  pm.expect(body.customer.status).to.equal('Lead');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{customerEmail2}}\",\n  \"company\": \"Smith & Sons\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} re-sending Bob's own email plus a new company. The duplicate check must exclude the customer itself.\n\n**Expected:** 200, email unchanged, company updated."
+					},
+					"response": []
+				},
+				{
+					"name": "Get customer - malformed id -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid customer id\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid customer id\");",
+									"});",
+									"pm.test(\"errors lists exactly: id\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"id\":\"Invalid customer id\"});",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/12345",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"12345"
+							]
+						},
+						"description": "GET /api/customers/12345 (not a 24-char hex ObjectId).\n\n**Expected:** 400 `Invalid customer id` with `errors.id`."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - malformed id -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid customer id\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid customer id\");",
+									"});",
+									"pm.test(\"errors lists exactly: id\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"id\":\"Invalid customer id\"});",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Should never be saved\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/not-a-valid-id",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"not-a-valid-id"
+							]
+						},
+						"description": "PUT /api/customers/not-a-valid-id with a valid body.\n\n**Expected:** 400 `Invalid customer id` (id is checked before the body)."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete customer - malformed id -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid customer id\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid customer id\");",
+									"});",
+									"pm.test(\"errors lists exactly: id\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"id\":\"Invalid customer id\"});",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/zzzzzzzzzzzzzzzzzzzzzzzz",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"zzzzzzzzzzzzzzzzzzzzzzzz"
+							]
+						},
+						"description": "DELETE /api/customers/zzzzzzzzzzzzzzzzzzzzzzzz (24 chars but not hex).\n\n**Expected:** 400 `Invalid customer id`."
+					},
+					"response": []
+				},
+				{
+					"name": "Get customer - valid but nonexistent id -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{nonExistentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{nonExistentId}}"
+							]
+						},
+						"description": "GET /api/customers/{{nonExistentId}} (well-formed ObjectId that does not exist).\n\n**Expected:** 404 `Customer not found`."
+					},
+					"response": []
+				},
+				{
+					"name": "Update customer - valid but nonexistent id -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Nobody home\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{nonExistentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{nonExistentId}}"
+							]
+						},
+						"description": "PUT /api/customers/{{nonExistentId}} with a valid body.\n\n**Expected:** 404 `Customer not found`."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete customer - valid but nonexistent id -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{nonExistentId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{nonExistentId}}"
+							]
+						},
+						"description": "DELETE /api/customers/{{nonExistentId}}.\n\n**Expected:** 404 `Customer not found`."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers - invalid status -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid query parameters\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid query parameters\");",
+									"});",
+									"pm.test(\"errors lists exactly: status\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"status\":\"Status must be one of: Lead, Prospect, Active, Inactive\"});",
+									"});",
+									"pm.test('no customer list is returned', function () {",
+									"  pm.expect(body).to.not.have.property('customers');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?status=VIP",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "VIP"
+								}
+							]
+						},
+						"description": "GET /api/customers?status=VIP.\n\n**Expected:** 400 `Invalid query parameters` with `errors.status`."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers - search too long -> 400",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.variables.set('longSearch', 'a'.repeat(101));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Invalid query parameters\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Invalid query parameters\");",
+									"});",
+									"pm.test(\"errors lists exactly: search\", function () {",
+									"    pm.expect(body.errors).to.deep.equal({\"search\":\"Search cannot exceed 100 characters\"});",
+									"});",
+									"pm.test('no customer list is returned', function () {",
+									"  pm.expect(body).to.not.have.property('customers');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers?search={{longSearch}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							],
+							"query": [
+								{
+									"key": "search",
+									"value": "{{longSearch}}"
+								}
+							]
+						},
+						"description": "GET /api/customers?search=<101 chars> (generated in the pre-request script).\n\n**Expected:** 400 `Invalid query parameters` with `errors.search`."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Security & Misc",
+			"description": "Data isolation between users (user B cannot see or touch user A's customers), missing/forged tokens, unknown routes, malformed/oversized JSON. Ends with cleanup requests that delete every customer created by the run.",
+			"item": [
+				{
+					"name": "Register user B -> 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Registration successful\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Registration successful\");",
+									"});",
+									"pm.test('token is a JWT (3 base64url parts) whose payload id is the user id', function () {",
+									"  pm.expect(body.token).to.be.a('string');",
+									"  const parts = body.token.split('.');",
+									"  pm.expect(parts).to.have.lengthOf(3);",
+									"  parts.forEach(function (part) { pm.expect(part).to.match(/^[A-Za-z0-9_-]+$/); });",
+									"  const cryptoJs = require('crypto-js');",
+									"  let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+									"  while (b64.length % 4) b64 += '=';",
+									"  const payload = JSON.parse(cryptoJs.enc.Base64.parse(b64).toString(cryptoJs.enc.Utf8));",
+									"  pm.expect(payload.id).to.equal(body.user._id);",
+									"  pm.expect(payload.exp).to.be.above(payload.iat);",
+									"});",
+									"pm.test('user B is a different user', function () {",
+									"  pm.expect(body.user._id).to.match(/^[a-f\\d]{24}$/);",
+									"  pm.expect(body.user._id).to.not.equal(pm.collectionVariables.get('userId'));",
+									"  pm.expect(body.user.email).to.equal('postman.b.' + pm.collectionVariables.get('runId') + '@example.com');",
+									"});",
+									"pm.test('password hash and __v are never returned', function () {",
+									"  pm.expect(body.user).to.not.have.property('password');",
+									"  pm.expect(body.user).to.not.have.property('__v');",
+									"});",
+									"if (pm.response.code === 201) {",
+									"  pm.collectionVariables.set('tokenB', body.token);",
+									"  pm.collectionVariables.set('userIdB', body.user._id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Second Tester\",\n  \"email\": \"postman.b.{{runId}}@example.com\",\n  \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/users/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"register"
+							]
+						},
+						"description": "POST /api/users/register for a second user (B).\n\n**Expected:** 201 with a JWT and a different user id. Saves `tokenB`, `userIdB`."
+					},
+					"response": []
+				},
+				{
+					"name": "User B cannot GET user A's customer -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "GET /api/customers/{{customerId2}} (Bob, owned by A) using user B's token.\n\n**Expected:** 404 `Customer not found` - other users' records are invisible."
+					},
+					"response": []
+				},
+				{
+					"name": "User B cannot UPDATE user A's customer -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Hacked By B\",\n  \"status\": \"Inactive\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PUT /api/customers/{{customerId2}} with user B's token and a valid body.\n\n**Expected:** 404 `Customer not found`; A's record is untouched (verified below)."
+					},
+					"response": []
+				},
+				{
+					"name": "User B cannot DELETE user A's customer -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Customer not found\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Customer not found\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "DELETE /api/customers/{{customerId2}} with user B's token.\n\n**Expected:** 404 `Customer not found`; A's record still exists (verified below)."
+					},
+					"response": []
+				},
+				{
+					"name": "User B's list excludes user A's customers -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test(\"B sees none of A's customers\", function () {",
+									"  pm.expect(ids).to.not.include(pm.collectionVariables.get('customerId2'));",
+									"  pm.expect(ids).to.not.include(pm.collectionVariables.get('customerId3'));",
+									"  pm.expect(body.count).to.equal(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers with user B's token.\n\n**Expected:** 200, `count: 0` - none of A's customers leak into B's list."
+					},
+					"response": []
+				},
+				{
+					"name": "User B creates customer with A's customer email + spoofed owner -> 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer added successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer added successfully\");",
+									"});",
+									"const c = body.customer;",
+									"pm.test('owner is user B even though the body claimed user A', function () {",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userIdB'));",
+									"  pm.expect(c.user).to.not.equal(pm.collectionVariables.get('userId'));",
+									"});",
+									"pm.test(\"same email as A's customer is allowed for a different user\", function () {",
+									"  pm.expect(c.email).to.equal(pm.collectionVariables.get('customerEmail2'));",
+									"  pm.expect(c._id).to.not.equal(pm.collectionVariables.get('customerId2'));",
+									"});",
+									"if (pm.response.code === 201) pm.collectionVariables.set('customerIdB', c._id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Bob Smith\",\n  \"email\": \"{{customerEmail2}}\",\n  \"phone\": \"020 7946 0018\",\n  \"user\": \"{{userId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers as user B using the same email as A's customer Bob, and a `user` field pointing at A.\n\n**Expected:** 201 - email uniqueness is per user, and the `user` field is ignored (owner is always the caller, B). Saves `customerIdB`."
+					},
+					"response": []
+				},
+				{
+					"name": "User B's list shows only B's customer -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test(\"only B's own customer is listed\", function () {",
+									"  pm.expect(body.count).to.equal(1);",
+									"  pm.expect(ids).to.deep.equal([pm.collectionVariables.get('customerIdB')]);",
+									"  pm.expect(body.customers[0].user).to.equal(pm.collectionVariables.get('userIdB'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers with user B's token.\n\n**Expected:** 200 with exactly B's one customer."
+					},
+					"response": []
+				},
+				{
+					"name": "User A's customer is unchanged after B's attempts -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"const c = body.customer;",
+									"pm.test(\"record still exists with A's values\", function () {",
+									"  pm.expect(c._id).to.equal(pm.collectionVariables.get('customerId2'));",
+									"  pm.expect(c.name).to.equal('Bob Smith');",
+									"  pm.expect(c.status).to.equal('Lead');",
+									"  pm.expect(c.company).to.equal('Smith & Sons');",
+									"  pm.expect(c.user).to.equal(pm.collectionVariables.get('userId'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "GET /api/customers/{{customerId2}} as user A.\n\n**Expected:** 200; Bob still exists with A's values (B's PUT and DELETE had no effect)."
+					},
+					"response": []
+				},
+				{
+					"name": "User A's list excludes user B's customer -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test(\"A sees only A's customers\", function () {",
+									"  pm.expect(body.count).to.equal(2);",
+									"  pm.expect(ids).to.include.members([pm.collectionVariables.get('customerId2'), pm.collectionVariables.get('customerId3')]);",
+									"  pm.expect(ids).to.not.include(pm.collectionVariables.get('customerIdB'));",
+									"  body.customers.forEach(function (c) { pm.expect(c.user).to.equal(pm.collectionVariables.get('userId')); });",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers as user A.\n\n**Expected:** 200 with A's 2 customers (Bob, Carol) and not B's customer."
+					},
+					"response": []
+				},
+				{
+					"name": "List customers without token -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, no token provided\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, no token provided\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer list is returned', function () {",
+									"  pm.expect(body).to.not.have.property('customers');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers without an Authorization header.\n\n**Expected:** 401 `Not authorized, no token provided`."
+					},
+					"response": []
+				},
+				{
+					"name": "Create customer without token -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, no token provided\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, no token provided\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"No Token\",\n  \"email\": \"no.token.{{runId}}@example.com\",\n  \"phone\": \"555 123 4567\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with a valid body but no token.\n\n**Expected:** 401 `Not authorized, no token provided`; nothing is created."
+					},
+					"response": []
+				},
+				{
+					"name": "Customers with Basic auth scheme -> 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, no token provided\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, no token provided\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Basic dXNlcjpwYXNz"
+							}
+						],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers with `Authorization: Basic ...` instead of a Bearer token.\n\n**Expected:** 401 `Not authorized, no token provided`."
+					},
+					"response": []
+				},
+				{
+					"name": "Customers with forged token payload -> 401",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const cryptoJs = require('crypto-js');",
+									"function b64url(text) {",
+									"    return cryptoJs.enc.Base64.stringify(cryptoJs.enc.Utf8.parse(text)).replace(/=+$/, '').replace(/\\+/g, '-').replace(/\\//g, '_');",
+									"}",
+									"const parts = String(pm.collectionVariables.get('token')).split('.');",
+									"let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');",
+									"while (b64.length % 4) b64 += '=';",
+									"const payload = JSON.parse(cryptoJs.enc.Base64.parse(b64).toString(cryptoJs.enc.Utf8));",
+									"payload.id = pm.collectionVariables.get('userIdB'); // try to impersonate user B",
+									"pm.variables.set('forgedToken', [parts[0], b64url(JSON.stringify(payload)), parts[2]].join('.'));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, invalid token\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, invalid token\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer list is returned', function () {",
+									"  pm.expect(body).to.not.have.property('customers');",
+									"});",
+									"pm.test(\"the token sent was really forged (A's signature, edited payload)\", function () {",
+									"  const forged = String(pm.variables.get('forgedToken')).split('.');",
+									"  const real = String(pm.collectionVariables.get('token')).split('.');",
+									"  pm.expect(forged).to.have.lengthOf(3);",
+									"  pm.expect(forged[0]).to.equal(real[0]);",
+									"  pm.expect(forged[2]).to.equal(real[2]);",
+									"  pm.expect(forged[1]).to.not.equal(real[1]);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{forgedToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers with user A's JWT whose payload was edited to user B's id (signature no longer matches). Built in the pre-request script.\n\n**Expected:** 401 `Not authorized, invalid token`."
+					},
+					"response": []
+				},
+				{
+					"name": "Customers with unsigned (alg none) token -> 401",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const cryptoJs = require('crypto-js');",
+									"function b64url(text) {",
+									"    return cryptoJs.enc.Base64.stringify(cryptoJs.enc.Utf8.parse(text)).replace(/=+$/, '').replace(/\\+/g, '-').replace(/\\//g, '_');",
+									"}",
+									"const header = b64url(JSON.stringify({ alg: 'none', typ: 'JWT' }));",
+									"const payload = b64url(JSON.stringify({ id: pm.collectionVariables.get('userId'), iat: Math.floor(Date.now() / 1000) }));",
+									"pm.variables.set('algNoneToken', header + '.' + payload + '.');"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 401 Unauthorized\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Not authorized, invalid token\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Not authorized, invalid token\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer list is returned', function () {",
+									"  pm.expect(body).to.not.have.property('customers');",
+									"});",
+									"pm.test('the token sent was really an unsigned alg:none JWT', function () {",
+									"  const parts = String(pm.variables.get('algNoneToken')).split('.');",
+									"  pm.expect(parts).to.have.lengthOf(3);",
+									"  pm.expect(parts[2]).to.equal('');",
+									"  const cryptoJs = require('crypto-js');",
+									"  let b64 = parts[0].replace(/-/g, '+').replace(/_/g, '/');",
+									"  while (b64.length % 4) b64 += '=';",
+									"  pm.expect(JSON.parse(cryptoJs.enc.Base64.parse(b64).toString(cryptoJs.enc.Utf8)).alg).to.equal('none');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{algNoneToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "GET /api/customers with an unsigned JWT (`alg: none`, empty signature) claiming to be user A. Built in the pre-request script.\n\n**Expected:** 401 `Not authorized, invalid token`."
+					},
+					"response": []
+				},
+				{
+					"name": "Unknown route -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Route not found: GET /api/does-not-exist\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Route not found: GET /api/does-not-exist\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "noauth"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/does-not-exist",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"does-not-exist"
+							]
+						},
+						"description": "GET /api/does-not-exist.\n\n**Expected:** 404 `Route not found: GET /api/does-not-exist`."
+					},
+					"response": []
+				},
+				{
+					"name": "Unsupported method on a customer -> 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is false with a \"Route not found\" message', function () {",
+									"  pm.expect(body.success).to.equal(false);",
+									"  pm.expect(body.message).to.equal('Route not found: PATCH /api/customers/' + pm.collectionVariables.get('customerId2'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"Active\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "PATCH /api/customers/{{customerId2}} (the API only supports GET/PUT/DELETE on this path).\n\n**Expected:** 404 `Route not found: PATCH /api/customers/<id>`."
+					},
+					"response": []
+				},
+				{
+					"name": "Malformed JSON body -> 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Malformed JSON in request body\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Malformed JSON in request body\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{ \"name\": \"Broken JSON\", \"email\": ",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with a truncated JSON body (Content-Type: application/json).\n\n**Expected:** 400 `Malformed JSON in request body`."
+					},
+					"response": []
+				},
+				{
+					"name": "Payload too large -> 413",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.variables.set('hugeNotes', 'x'.repeat(11 * 1024));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 413 Payload Too Large\", function () {",
+									"    pm.response.to.have.status(413);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is false with message \\\"Request body is too large\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(false);",
+									"    pm.expect(body.message).to.equal(\"Request body is too large\");",
+									"});",
+									"pm.test('no field errors are returned', function () {",
+									"    pm.expect(body).to.not.have.property('errors');",
+									"});",
+									"pm.test('no customer data is returned', function () {",
+									"    pm.expect(body).to.not.have.property('customer');",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Huge Payload\",\n  \"email\": \"huge.{{runId}}@example.com\",\n  \"phone\": \"555 123 4567\",\n  \"notes\": \"{{hugeNotes}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "POST /api/customers with an ~11 KB body (the API limits JSON bodies to 10 KB).\n\n**Expected:** 413 `Request body is too large`."
+					},
+					"response": []
+				},
+				{
+					"name": "Cleanup - delete user B's customer -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer deleted successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer deleted successfully\");",
+									"});",
+									"pm.test('deleted the expected customer', function () {",
+									"  pm.expect(body.customer._id).to.equal(pm.collectionVariables.get('customerIdB'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerIdB}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerIdB}}"
+							]
+						},
+						"description": "Cleanup: DELETE /api/customers/{{customerIdB}} as user B.\n\n**Expected:** 200 `Customer deleted successfully`."
+					},
+					"response": []
+				},
+				{
+					"name": "Cleanup - delete user A's customer Bob -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer deleted successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer deleted successfully\");",
+									"});",
+									"pm.test('deleted the expected customer', function () {",
+									"  pm.expect(body.customer._id).to.equal(pm.collectionVariables.get('customerId2'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId2}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId2}}"
+							]
+						},
+						"description": "Cleanup: DELETE /api/customers/{{customerId2}} as user A.\n\n**Expected:** 200 `Customer deleted successfully`."
+					},
+					"response": []
+				},
+				{
+					"name": "Cleanup - delete user A's customer Carol -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test(\"success is true with message \\\"Customer deleted successfully\\\"\", function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"    pm.expect(body.message).to.equal(\"Customer deleted successfully\");",
+									"});",
+									"pm.test('deleted the expected customer', function () {",
+									"  pm.expect(body.customer._id).to.equal(pm.collectionVariables.get('customerId3'));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers/{{customerId3}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers",
+								"{{customerId3}}"
+							]
+						},
+						"description": "Cleanup: DELETE /api/customers/{{customerId3}} as user A.\n\n**Expected:** 200 `Customer deleted successfully`."
+					},
+					"response": []
+				},
+				{
+					"name": "Cleanup - user A has no customers left -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('user A has no customers left', function () {",
+									"  pm.expect(body.count).to.equal(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "Cleanup check: GET /api/customers as user A.\n\n**Expected:** 200, `count: 0` - the run left no customers behind for A."
+					},
+					"response": []
+				},
+				{
+					"name": "Cleanup - user B has no customers left -> 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"const body = pm.response.json();",
+									"pm.test('success is true', function () {",
+									"    pm.expect(body.success).to.equal(true);",
+									"});",
+									"pm.test('count matches the customers array length', function () {",
+									"  pm.expect(body.customers).to.be.an('array');",
+									"  pm.expect(body.count).to.equal(body.customers.length);",
+									"});",
+									"const ids = body.customers.map(function (c) { return c._id; });",
+									"pm.test('user B has no customers left', function () {",
+									"  pm.expect(body.count).to.equal(0);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenB}}",
+									"type": "string"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/customers",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"customers"
+							]
+						},
+						"description": "Cleanup check: GET /api/customers as user B.\n\n**Expected:** 200, `count: 0` - the run left no customers behind for B."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Unique id for this run: every registered email contains it, so the suite",
+					"// can be re-run any number of times against the same database.",
+					"// Created only when it is not already set for this run",
+					"// (\"0. Health\", the first request of a run, always starts a fresh one).",
+					"if (!pm.collectionVariables.get('runId')) {",
+					"  pm.collectionVariables.set('runId', String(Date.now()));",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Common checks that apply to every response of this API",
+					"pm.test('[common] response is JSON', function () {",
+					"  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+					"});",
+					"const common = pm.response.json();",
+					"pm.test('[common] success flag matches the HTTP status', function () {",
+					"  pm.expect(common.success).to.equal(pm.response.code < 400);",
+					"});",
+					"if (pm.response.code >= 400) {",
+					"  pm.test('[common] error has a message and no stack trace', function () {",
+					"    pm.expect(common.message).to.be.a('string').and.not.be.empty;",
+					"    pm.expect(common).to.not.have.property('stack');",
+					"  });",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5014/api",
+			"type": "string",
+			"description": "Fallback only - the environment value wins."
+		},
+		{
+			"key": "password",
+			"value": "Secret123",
+			"type": "string",
+			"description": "Password used for the test users."
+		},
+		{
+			"key": "nonExistentId",
+			"value": "ffffffffffffffffffffffff",
+			"type": "string",
+			"description": "Well-formed ObjectId that cannot exist (timestamp in 2106)."
+		},
+		{
+			"key": "runId",
+			"value": "",
+			"type": "string",
+			"description": "Unique id of the current run (Date.now())."
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string",
+			"description": "JWT of user A."
+		},
+		{
+			"key": "tokenB",
+			"value": "",
+			"type": "string",
+			"description": "JWT of user B."
+		},
+		{
+			"key": "userId",
+			"value": "",
+			"type": "string",
+			"description": "Id of user A."
+		},
+		{
+			"key": "userIdB",
+			"value": "",
+			"type": "string",
+			"description": "Id of user B."
+		},
+		{
+			"key": "emailA",
+			"value": "",
+			"type": "string",
+			"description": "Email of user A (lowercased by the API)."
+		},
+		{
+			"key": "customerId",
+			"value": "",
+			"type": "string",
+			"description": "Alice - created and deleted in \"2. Customers - CRUD\"."
+		},
+		{
+			"key": "customerId2",
+			"value": "",
+			"type": "string",
+			"description": "Bob - created in CRUD, used by folders 3 and 4, deleted in cleanup."
+		},
+		{
+			"key": "customerId3",
+			"value": "",
+			"type": "string",
+			"description": "Carol - helper created in folder 3, deleted in cleanup."
+		},
+		{
+			"key": "customerIdB",
+			"value": "",
+			"type": "string",
+			"description": "User B's customer, deleted in cleanup."
+		},
+		{
+			"key": "customerEmail",
+			"value": "",
+			"type": "string",
+			"description": "Alice's email."
+		},
+		{
+			"key": "customerEmail2",
+			"value": "",
+			"type": "string",
+			"description": "Bob's email."
+		},
+		{
+			"key": "customerEmail3",
+			"value": "",
+			"type": "string",
+			"description": "Carol's email."
+		},
+		{
+			"key": "customerCreatedAt",
+			"value": "",
+			"type": "string",
+			"description": "Alice's createdAt."
+		},
+		{
+			"key": "customerUpdatedAt",
+			"value": "",
+			"type": "string",
+			"description": "Alice's latest updatedAt."
+		}
+	]
+}
