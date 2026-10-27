@@ -1,12 +1,12 @@
-import { useState } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import useAuth from '../hooks/useAuth'
 import { getInitials } from '../utils/format'
 import Button from './Button'
 import { LogoMark, LogoutIcon, MenuIcon, PlusIcon, UsersIcon, XIcon } from './icons'
 
 const navLinkClass = ({ isActive }) =>
-  `inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+  `inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
     isActive ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
   }`
 
@@ -14,8 +14,26 @@ export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
 
   const closeMenu = () => setMenuOpen(false)
+
+  // Close the mobile menu whenever the page changes (links, browser Back, ...)
+  const [menuPath, setMenuPath] = useState(pathname)
+  if (menuPath !== pathname) {
+    setMenuPath(pathname)
+    setMenuOpen(false)
+  }
+
+  // ...and when Escape is pressed
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [menuOpen])
 
   const handleLogout = () => {
     closeMenu()
@@ -49,7 +67,7 @@ export default function Navbar() {
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
                   {getInitials(user.name)}
                 </span>
-                <div className="text-right leading-tight">
+                <div className="hidden text-right leading-tight lg:block">
                   <p className="max-w-40 truncate text-sm font-semibold text-slate-900">{user.name}</p>
                   <p className="max-w-40 truncate text-xs text-slate-500">{user.email}</p>
                 </div>
@@ -105,7 +123,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-600"
             >
               <LogoutIcon className="h-4 w-4" /> Log out
             </button>

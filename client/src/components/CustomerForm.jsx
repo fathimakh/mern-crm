@@ -50,12 +50,12 @@ export default function CustomerForm({ initialValues, onSubmit, submitLabel, sub
           as="textarea"
           rows={4}
           placeholder="Anything worth remembering about this customer (optional)"
-          hint={`${values.notes.length}/500 characters`}
+          hint={`${values.notes.trim().length}/500 characters`}
           {...field('notes')}
         />
       </div>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:justify-end">
+      <div className="flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:justify-end">
         <Button variant="secondary" to={cancelTo}>
           Cancel
         </Button>

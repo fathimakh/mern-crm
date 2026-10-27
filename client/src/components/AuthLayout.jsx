@@ -3,7 +3,7 @@ import { LogoMark } from './icons'
 // Centered card used by the Login and Register pages
 export default function AuthLayout({ title, subtitle, children, footer }) {
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] items-start justify-center px-4 py-10 sm:items-center sm:py-16">
+    <div className="flex min-h-[calc(100vh-7.125rem)] items-start justify-center px-4 py-10 sm:items-center sm:py-16">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <LogoMark className="mx-auto h-12 w-12" />

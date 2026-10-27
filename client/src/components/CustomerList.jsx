@@ -13,23 +13,23 @@ function Avatar({ name }) {
 
 /**
  * Responsive customer list:
- *  - md and up: a table
+ *  - md and up: a table (Company from lg, Added from xl; scrolls sideways if still too wide)
  *  - small screens: stacked cards
  */
 export default function CustomerList({ customers, onDelete }) {
   return (
     <>
       {/* Table (tablet / desktop) */}
-      <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+      <div className="relative hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr className="text-left text-xs font-semibold tracking-wide text-slate-500 uppercase">
-              <th scope="col" className="px-5 py-3">Customer</th>
-              <th scope="col" className="px-5 py-3">Phone</th>
-              <th scope="col" className="hidden px-5 py-3 lg:table-cell">Company</th>
-              <th scope="col" className="px-5 py-3">Status</th>
-              <th scope="col" className="hidden px-5 py-3 lg:table-cell">Added</th>
-              <th scope="col" className="px-5 py-3 text-right">
+              <th scope="col" className="px-4 py-3 lg:px-5">Customer</th>
+              <th scope="col" className="px-4 py-3 lg:px-5">Phone</th>
+              <th scope="col" className="hidden px-4 py-3 lg:px-5 lg:table-cell">Company</th>
+              <th scope="col" className="px-4 py-3 lg:px-5">Status</th>
+              <th scope="col" className="hidden px-4 py-3 lg:px-5 xl:table-cell">Added</th>
+              <th scope="col" className="px-4 py-3 lg:px-5 text-right">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -37,26 +37,36 @@ export default function CustomerList({ customers, onDelete }) {
           <tbody className="divide-y divide-slate-100 text-sm">
             {customers.map((customer) => (
               <tr key={customer._id} className="transition-colors hover:bg-slate-50/70">
-                <td className="px-5 py-4">
+                <td className="px-4 py-4 lg:px-5">
                   <div className="flex items-center gap-3">
                     <Avatar name={customer.name} />
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900">{customer.name}</p>
-                      <a href={`mailto:${customer.email}`} className="truncate text-slate-500 hover:text-indigo-600">
+                    <div className="min-w-0 max-w-36 lg:max-w-44 xl:max-w-64">
+                      <p className="truncate font-semibold text-slate-900" title={customer.name}>
+                        {customer.name}
+                      </p>
+                      <a
+                        href={`mailto:${customer.email}`}
+                        title={customer.email}
+                        className="block truncate text-slate-500 hover:text-indigo-600"
+                      >
                         {customer.email}
                       </a>
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-4 whitespace-nowrap text-slate-700">{customer.phone}</td>
-                <td className="hidden px-5 py-4 text-slate-700 lg:table-cell">{customer.company || '—'}</td>
-                <td className="px-5 py-4">
+                <td className="px-4 py-4 lg:px-5 whitespace-nowrap text-slate-700">{customer.phone}</td>
+                <td className="hidden px-4 py-4 lg:px-5 text-slate-700 lg:table-cell">
+                  <span className="block max-w-36 truncate xl:max-w-48" title={customer.company || undefined}>
+                    {customer.company || '—'}
+                  </span>
+                </td>
+                <td className="px-4 py-4 lg:px-5">
                   <StatusBadge status={customer.status} />
                 </td>
-                <td className="hidden px-5 py-4 whitespace-nowrap text-slate-500 lg:table-cell">
+                <td className="hidden px-4 py-4 lg:px-5 whitespace-nowrap text-slate-500 xl:table-cell">
                   {formatDate(customer.createdAt)}
                 </td>
-                <td className="px-5 py-4">
+                <td className="px-4 py-4 lg:px-5 whitespace-nowrap">
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="secondary"
@@ -123,7 +133,11 @@ export default function CustomerList({ customers, onDelete }) {
                 </div>
               )}
             </dl>
-            {customer.notes && <p className="mt-3 line-clamp-2 rounded-lg bg-slate-50 p-2.5 text-sm text-slate-600">{customer.notes}</p>}
+            {customer.notes && (
+              <div className="mt-3 rounded-lg bg-slate-50 p-2.5">
+                <p className="line-clamp-2 text-sm break-words text-slate-600">{customer.notes}</p>
+              </div>
+            )}
             <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
               <Button variant="secondary" size="sm" to={`/customers/${customer._id}/edit`} aria-label={`Edit ${customer.name}`}>
                 <PencilIcon className="h-4 w-4" /> Edit

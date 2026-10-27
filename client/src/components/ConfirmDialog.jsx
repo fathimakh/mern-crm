@@ -16,13 +16,39 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   const cancelRef = useRef(null)
+  const panelRef = useRef(null)
 
+  // Focus "Cancel" when the dialog opens and give focus back to the opening button when it closes
   useEffect(() => {
     if (!open) return undefined
+    const opener = document.activeElement
     cancelRef.current?.focus()
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    }
+  }, [open])
+
+  // Escape closes the dialog; Tab / Shift+Tab stay inside it
+  useEffect(() => {
+    if (!open) return undefined
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape' && !loading) onCancel()
+      if (event.key !== 'Tab') return
+
+      const focusable = [...panelRef.current.querySelectorAll('button:not([disabled]), a[href]')]
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const inside = panelRef.current.contains(document.activeElement)
+
+      if (event.shiftKey && (document.activeElement === first || !inside)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || !inside)) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
@@ -39,7 +65,7 @@ export default function ConfirmDialog({
       aria-describedby="confirm-dialog-message"
     >
       <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-[2px]" aria-hidden="true" onClick={loading ? undefined : onCancel} />
-      <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div ref={panelRef} className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <div className="flex gap-4">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
             <TrashIcon className="h-5 w-5" />
@@ -58,7 +84,7 @@ export default function ConfirmDialog({
             {error}
           </Alert>
         )}
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
