@@ -14,6 +14,8 @@ status codes and messages. All API endpoints are tested with a **Postman** colle
 > the duplicate-email error from the API, logout, the protected-page redirect, a wrong password, login again and the
 > phone-width layout.
 
+**GitHub repository:** https://github.com/fathimakh/mern-crm
+
 ---
 
 ## Table of contents
@@ -139,7 +141,7 @@ mern-crm/
 ### 1. Clone and install
 
 ```bash
-git clone <repository-url> mern-crm
+git clone https://github.com/fathimakh/mern-crm.git mern-crm
 cd mern-crm
 npm run install:all        # installs root, server and client dependencies
 ```
