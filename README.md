@@ -9,9 +9,10 @@ add, view, search, update and delete their own customers. The React front end is
 The Express back end validates every request again in middleware and answers errors with proper HTTP
 status codes and messages. All API endpoints are tested with a **Postman** collection.
 
-> **Demo video:** [`demo/mern-crm-demo.mp4`](demo/mern-crm-demo.mp4) (about 6 minutes) — a screen recording of the complete
-> functionality (register, login, user data, add / edit / delete customers, validation errors, logout,
-> responsive layout, MongoDB data and the Postman test run).
+> **Demo video:** [`demo/mern-crm-demo.mp4`](demo/mern-crm-demo.mp4) (about 2 minutes) — a plain screen recording of the app
+> in use, in one take: register (with validation errors), user data, add / search / filter / edit / delete customers,
+> the duplicate-email error from the API, logout, the protected-page redirect, a wrong password, login again and the
+> phone-width layout.
 
 ---
 
